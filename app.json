@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Language Translator",
+    "slug": "language-translator",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "language-translator",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F1117"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourname.languagetranslator",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app uses the microphone to record your voice so it can be translated into another language."
+      }
+    },
+    "android": {
+      "package": "com.yourname.languagetranslator",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0F1117"
+      },
+      "permissions": ["android.permission.RECORD_AUDIO"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "This app uses the microphone to record your voice so it can be translated into another language."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

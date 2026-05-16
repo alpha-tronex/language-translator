@@ -12,9 +12,10 @@ import {
   View,
 } from 'react-native';
 import LanguagePicker from '../components/LanguagePicker';
+import LanguageModal from '../components/LanguageModal';
 import RecordButton from '../components/RecordButton';
 import TextPanel from '../components/TextPanel';
-import { SUPPORTED_LANGUAGES, Language } from '../lib/languages';
+import { Language } from '../lib/languages';
 import { requestMicPermission, startRecording, stopRecording } from '../lib/recorder';
 import { transcribeAudio, translateText } from '../lib/api';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
@@ -23,12 +24,13 @@ import { AppState } from '../lib/types';
 const AUDIO_PATH = FileSystem.cacheDirectory + 'translation.mp3';
 
 export default function HomeScreen() {
-  const [fromLang,    setFromLang]    = useState<Language | null>(null);
-  const [toLang,      setToLang]      = useState<Language | null>(null);
-  const [appState,    setAppState]    = useState<AppState>('idle');
-  const [transcript,  setTranscript]  = useState<string | null>(null);
-  const [translation, setTranslation] = useState<string | null>(null);
-  const [errorMsg,    setErrorMsg]    = useState<string | null>(null);
+  const [fromLang,     setFromLang]     = useState<Language | null>(null);
+  const [toLang,       setToLang]       = useState<Language | null>(null);
+  const [appState,     setAppState]     = useState<AppState>('idle');
+  const [transcript,   setTranscript]   = useState<string | null>(null);
+  const [translation,  setTranslation]  = useState<string | null>(null);
+  const [errorMsg,     setErrorMsg]     = useState<string | null>(null);
+  const [modalTarget,  setModalTarget]  = useState<'from' | 'to' | null>(null);
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const soundRef     = useRef<Audio.Sound | null>(null);
@@ -146,7 +148,7 @@ export default function HomeScreen() {
           <LanguagePicker
             label="From"
             selected={fromLang}
-            onPress={() => setFromLang(SUPPORTED_LANGUAGES[0])}
+            onPress={() => setModalTarget('from')}
           />
           <TouchableOpacity
             onPress={() => { const t = fromLang; setFromLang(toLang); setToLang(t); }}
@@ -156,9 +158,20 @@ export default function HomeScreen() {
           <LanguagePicker
             label="To"
             selected={toLang}
-            onPress={() => setToLang(SUPPORTED_LANGUAGES[1])}
+            onPress={() => setModalTarget('to')}
           />
         </View>
+
+        {/* Language selection modal */}
+        <LanguageModal
+          visible={modalTarget !== null}
+          selected={modalTarget === 'from' ? fromLang : toLang}
+          onSelect={(lang) => {
+            if (modalTarget === 'from') setFromLang(lang);
+            else setToLang(lang);
+          }}
+          onClose={() => setModalTarget(null)}
+        />
 
         {/* Text panels */}
         {transcript && (

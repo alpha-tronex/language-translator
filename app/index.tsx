@@ -11,29 +11,36 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import LanguagePicker from '../components/LanguagePicker';
+import Toast from 'react-native-toast-message';
 import LanguageModal from '../components/LanguageModal';
+import LanguagePicker from '../components/LanguagePicker';
 import RecordButton from '../components/RecordButton';
 import TextPanel from '../components/TextPanel';
+import { transcribeAudio, translateText } from '../lib/api';
+import { getErrorMessage } from '../lib/errors';
 import { Language } from '../lib/languages';
 import { requestMicPermission, startRecording, stopRecording } from '../lib/recorder';
-import { transcribeAudio, translateText } from '../lib/api';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
 import { AppState } from '../lib/types';
 
 const AUDIO_PATH = FileSystem.cacheDirectory + 'translation.mp3';
+const MIN_RECORDING_MS = 500;
+
+function showError(message: string) {
+  Toast.show({ type: 'error', text1: message, visibilityTime: 4000 });
+}
 
 export default function HomeScreen() {
-  const [fromLang,     setFromLang]     = useState<Language | null>(null);
-  const [toLang,       setToLang]       = useState<Language | null>(null);
-  const [appState,     setAppState]     = useState<AppState>('idle');
-  const [transcript,   setTranscript]   = useState<string | null>(null);
-  const [translation,  setTranslation]  = useState<string | null>(null);
-  const [errorMsg,     setErrorMsg]     = useState<string | null>(null);
-  const [modalTarget,  setModalTarget]  = useState<'from' | 'to' | null>(null);
+  const [fromLang,    setFromLang]    = useState<Language | null>(null);
+  const [toLang,      setToLang]      = useState<Language | null>(null);
+  const [appState,    setAppState]    = useState<AppState>('idle');
+  const [transcript,  setTranscript]  = useState<string | null>(null);
+  const [translation, setTranslation] = useState<string | null>(null);
+  const [modalTarget, setModalTarget] = useState<'from' | 'to' | null>(null);
 
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const soundRef     = useRef<Audio.Sound | null>(null);
+  const recordingRef   = useRef<Audio.Recording | null>(null);
+  const soundRef       = useRef<Audio.Sound | null>(null);
+  const recordStartRef = useRef<number>(0);
 
   const isRecording = appState === 'recording';
   const canRecord   = fromLang !== null && toLang !== null && appState === 'idle';
@@ -50,12 +57,10 @@ export default function HomeScreen() {
     cleanupAudio();
     setTranscript(null);
     setTranslation(null);
-    setErrorMsg(null);
     setAppState('idle');
   }
 
   async function handleRecordPress() {
-    setErrorMsg(null);
     if (isRecording) {
       await handleStop();
     } else {
@@ -82,14 +87,25 @@ export default function HomeScreen() {
     }
     try {
       recordingRef.current = await startRecording();
+      recordStartRef.current = Date.now();
       setAppState('recording');
-    } catch {
-      setErrorMsg('Could not start recording. Try again.');
+    } catch (e) {
+      showError(getErrorMessage(e));
     }
   }
 
   async function handleStop() {
     if (!recordingRef.current) return;
+
+    const duration = Date.now() - recordStartRef.current;
+    if (duration < MIN_RECORDING_MS) {
+      showError('Recording too short — hold the button for at least half a second.');
+      await recordingRef.current.stopAndUnloadAsync().catch(() => {});
+      recordingRef.current = null;
+      setAppState('idle');
+      return;
+    }
+
     setAppState('transcribing');
     try {
       const uri = await stopRecording(recordingRef.current);
@@ -98,8 +114,8 @@ export default function HomeScreen() {
       const { transcript } = await transcribeAudio(uri, fromLang!.code);
       setTranscript(transcript);
       setAppState('review');
-    } catch (e: any) {
-      setErrorMsg(e.message ?? 'Transcription failed. Try again.');
+    } catch (e) {
+      showError(getErrorMessage(e));
       setAppState('idle');
     }
   }
@@ -107,7 +123,6 @@ export default function HomeScreen() {
   async function handleTranslate() {
     if (!transcript || !fromLang || !toLang) return;
     setAppState('translating');
-    setErrorMsg(null);
     try {
       const { translation, audioBase64 } = await translateText(
         transcript,
@@ -116,24 +131,32 @@ export default function HomeScreen() {
       );
       setTranslation(translation);
 
-      // Write audio to device and play
       await FileSystem.writeAsStringAsync(AUDIO_PATH, audioBase64, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      const { sound } = await Audio.Sound.createAsync({ uri: AUDIO_PATH });
-      soundRef.current = sound;
-      await sound.playAsync();
+
+      try {
+        const { sound } = await Audio.Sound.createAsync({ uri: AUDIO_PATH });
+        soundRef.current = sound;
+        await sound.playAsync();
+      } catch {
+        showError("Couldn't play audio. The translation text is shown above.");
+      }
 
       setAppState('playback');
-    } catch (e: any) {
-      setErrorMsg(e.message ?? 'Translation failed. Try again.');
+    } catch (e) {
+      showError(getErrorMessage(e));
       setAppState('review');
     }
   }
 
   async function handlePlay() {
     if (!soundRef.current) return;
-    await soundRef.current.replayAsync();
+    try {
+      await soundRef.current.replayAsync();
+    } catch {
+      showError("Couldn't play audio. Try recording again.");
+    }
   }
 
   return (
@@ -162,7 +185,6 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Language selection modal */}
         <LanguageModal
           visible={modalTarget !== null}
           selected={modalTarget === 'from' ? fromLang : toLang}
@@ -194,13 +216,6 @@ export default function HomeScreen() {
             <Text style={styles.statusText}>
               {appState === 'transcribing' ? 'Transcribing…' : 'Translating…'}
             </Text>
-          </View>
-        )}
-
-        {/* Error */}
-        {errorMsg && (
-          <View style={styles.spinnerArea}>
-            <Text style={styles.errorText}>{errorMsg}</Text>
           </View>
         )}
 
@@ -294,11 +309,6 @@ const styles = StyleSheet.create({
   statusText: {
     color: colors.textSecondary,
     fontSize: fontSize.md,
-  },
-  errorText: {
-    color: colors.destructive,
-    fontSize: fontSize.sm,
-    textAlign: 'center',
   },
   spacer: {
     flex: 1,

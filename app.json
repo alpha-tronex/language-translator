@@ -14,13 +14,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourname.languagetranslator",
+      "bundleIdentifier": "com.alpha-tronex.languagetranslator",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "This app uses the microphone to record your voice so it can be translated into another language."
       }
     },
     "android": {
-      "package": "com.yourname.languagetranslator",
+      "package": "com.alpha-tronex.languagetranslator",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F1117"

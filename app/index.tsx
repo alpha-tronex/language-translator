@@ -1,4 +1,5 @@
 import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,24 +16,38 @@ import RecordButton from '../components/RecordButton';
 import TextPanel from '../components/TextPanel';
 import { SUPPORTED_LANGUAGES, Language } from '../lib/languages';
 import { requestMicPermission, startRecording, stopRecording } from '../lib/recorder';
-import { transcribeAudio } from '../lib/api';
+import { transcribeAudio, translateText } from '../lib/api';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
 import { AppState } from '../lib/types';
 
+const AUDIO_PATH = FileSystem.cacheDirectory + 'translation.mp3';
+
 export default function HomeScreen() {
-  const [fromLang,   setFromLang]   = useState<Language | null>(null);
-  const [toLang,     setToLang]     = useState<Language | null>(null);
-  const [appState,   setAppState]   = useState<AppState>('idle');
-  const [transcript, setTranscript] = useState<string | null>(null);
-  const [errorMsg,   setErrorMsg]   = useState<string | null>(null);
+  const [fromLang,    setFromLang]    = useState<Language | null>(null);
+  const [toLang,      setToLang]      = useState<Language | null>(null);
+  const [appState,    setAppState]    = useState<AppState>('idle');
+  const [transcript,  setTranscript]  = useState<string | null>(null);
+  const [translation, setTranslation] = useState<string | null>(null);
+  const [errorMsg,    setErrorMsg]    = useState<string | null>(null);
 
   const recordingRef = useRef<Audio.Recording | null>(null);
+  const soundRef     = useRef<Audio.Sound | null>(null);
 
   const isRecording = appState === 'recording';
   const canRecord   = fromLang !== null && toLang !== null && appState === 'idle';
 
+  async function cleanupAudio() {
+    if (soundRef.current) {
+      await soundRef.current.unloadAsync();
+      soundRef.current = null;
+    }
+    await FileSystem.deleteAsync(AUDIO_PATH, { idempotent: true });
+  }
+
   function handleReRecord() {
+    cleanupAudio();
     setTranscript(null);
+    setTranslation(null);
     setErrorMsg(null);
     setAppState('idle');
   }
@@ -47,6 +62,10 @@ export default function HomeScreen() {
   }
 
   async function handleRecord() {
+    await cleanupAudio();
+    setTranscript(null);
+    setTranslation(null);
+
     const granted = await requestMicPermission();
     if (!granted) {
       Alert.alert(
@@ -70,7 +89,6 @@ export default function HomeScreen() {
   async function handleStop() {
     if (!recordingRef.current) return;
     setAppState('transcribing');
-
     try {
       const uri = await stopRecording(recordingRef.current);
       recordingRef.current = null;
@@ -82,6 +100,38 @@ export default function HomeScreen() {
       setErrorMsg(e.message ?? 'Transcription failed. Try again.');
       setAppState('idle');
     }
+  }
+
+  async function handleTranslate() {
+    if (!transcript || !fromLang || !toLang) return;
+    setAppState('translating');
+    setErrorMsg(null);
+    try {
+      const { translation, audioBase64 } = await translateText(
+        transcript,
+        fromLang.code,
+        toLang.code
+      );
+      setTranslation(translation);
+
+      // Write audio to device and play
+      await FileSystem.writeAsStringAsync(AUDIO_PATH, audioBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const { sound } = await Audio.Sound.createAsync({ uri: AUDIO_PATH });
+      soundRef.current = sound;
+      await sound.playAsync();
+
+      setAppState('playback');
+    } catch (e: any) {
+      setErrorMsg(e.message ?? 'Translation failed. Try again.');
+      setAppState('review');
+    }
+  }
+
+  async function handlePlay() {
+    if (!soundRef.current) return;
+    await soundRef.current.replayAsync();
   }
 
   return (
@@ -99,11 +149,7 @@ export default function HomeScreen() {
             onPress={() => setFromLang(SUPPORTED_LANGUAGES[0])}
           />
           <TouchableOpacity
-            onPress={() => {
-              const temp = fromLang;
-              setFromLang(toLang);
-              setToLang(temp);
-            }}
+            onPress={() => { const t = fromLang; setFromLang(toLang); setToLang(t); }}
           >
             <Text style={styles.swap}>⇄</Text>
           </TouchableOpacity>
@@ -114,18 +160,27 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Transcript card — shown after transcription */}
-        {transcript && appState === 'review' && (
+        {/* Text panels */}
+        {transcript && (
           <View style={styles.panelArea}>
             <TextPanel label="You said:" text={transcript} />
+            {translation && (
+              <TextPanel
+                label="Translation:"
+                text={translation}
+                rtl={toLang?.rtl}
+              />
+            )}
           </View>
         )}
 
-        {/* Transcribing spinner */}
-        {appState === 'transcribing' && (
+        {/* Spinners */}
+        {(appState === 'transcribing' || appState === 'translating') && (
           <View style={styles.spinnerArea}>
             <ActivityIndicator color={colors.accent} size="large" />
-            <Text style={styles.statusText}>Transcribing…</Text>
+            <Text style={styles.statusText}>
+              {appState === 'transcribing' ? 'Transcribing…' : 'Translating…'}
+            </Text>
           </View>
         )}
 
@@ -138,20 +193,32 @@ export default function HomeScreen() {
 
         <View style={styles.spacer} />
 
-        {/* Review step buttons */}
+        {/* Review buttons */}
         {appState === 'review' && (
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.reRecordBtn} onPress={handleReRecord}>
               <Text style={styles.reRecordLabel}>Re-record</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.translateBtn, styles.disabledBtn]} disabled>
+            <TouchableOpacity style={styles.translateBtn} onPress={handleTranslate}>
               <Text style={styles.translateLabel}>Translate</Text>
             </TouchableOpacity>
           </View>
         )}
 
+        {/* Playback buttons */}
+        {appState === 'playback' && (
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.reRecordBtn} onPress={handleReRecord}>
+              <Text style={styles.reRecordLabel}>Re-record</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.playBtn} onPress={handlePlay}>
+              <Text style={styles.playLabel}>▶  Play</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Record button */}
-        {appState !== 'review' && (
+        {appState !== 'review' && appState !== 'playback' && (
           <View style={styles.recordArea}>
             <RecordButton
               isRecording={isRecording}
@@ -161,7 +228,7 @@ export default function HomeScreen() {
             <Text style={styles.recordLabel}>
               {isRecording
                 ? 'Tap to stop'
-                : appState === 'transcribing'
+                : appState === 'transcribing' || appState === 'translating'
                 ? 'Processing…'
                 : canRecord
                 ? 'Tap to record'
@@ -250,11 +317,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  disabledBtn: {
-    opacity: 0.4,
-  },
   translateLabel: {
     color: '#FFFFFF',
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  playBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playLabel: {
+    color: colors.background,
     fontSize: fontSize.md,
     fontWeight: '600',
   },

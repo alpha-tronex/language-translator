@@ -4,7 +4,6 @@ function getApiUrl(): string {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
   }
-  // In Expo Go, derive the host from the Metro bundler (same machine as the API server)
   const host = Constants.expoConfig?.hostUri?.split(':')[0];
   return host ? `http://${host}:3000` : 'http://localhost:3000';
 }
@@ -25,6 +24,25 @@ export async function transcribeAudio(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? 'Transcription failed');
+  }
+
+  return res.json();
+}
+
+export async function translateText(
+  transcript: string,
+  fromLang: string,
+  toLang: string
+): Promise<{ translation: string; audioBase64: string; mimeType: string }> {
+  const res = await fetch(`${getApiUrl()}/api/translate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transcript, fromLang, toLang }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? 'Translation failed');
   }
 
   return res.json();

@@ -1,24 +1,85 @@
-import { useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Audio } from 'expo-av';
+import { useRef, useState } from 'react';
+import {
+  Alert,
+  Linking,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import LanguagePicker from '../components/LanguagePicker';
 import RecordButton from '../components/RecordButton';
 import { SUPPORTED_LANGUAGES, Language } from '../lib/languages';
-import { colors, fontSize, spacing } from '../lib/theme';
+import { requestMicPermission, startRecording, stopRecording, playAudioFromUri } from '../lib/recorder';
+import { colors, fontSize, radius, spacing } from '../lib/theme';
 import { AppState } from '../lib/types';
 
 export default function HomeScreen() {
   const [fromLang, setFromLang] = useState<Language | null>(null);
   const [toLang,   setToLang]   = useState<Language | null>(null);
   const [appState, setAppState] = useState<AppState>('idle');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const canRecord = fromLang !== null && toLang !== null && appState === 'idle';
+  const recordingRef  = useRef<Audio.Recording | null>(null);
+  const soundRef      = useRef<Audio.Sound | null>(null);
+
   const isRecording = appState === 'recording';
+  const canRecord   = fromLang !== null && toLang !== null && appState === 'idle';
 
-  function handleRecordPress() {
+  async function handleRecordPress() {
+    setErrorMsg(null);
+
     if (isRecording) {
-      setAppState('idle'); // will wire up real stop logic in Week 2
+      await handleStop();
     } else {
-      setAppState('recording'); // will wire up real record logic in Week 2
+      await handleRecord();
+    }
+  }
+
+  async function handleRecord() {
+    // Unload any previous playback
+    if (soundRef.current) {
+      await soundRef.current.unloadAsync();
+      soundRef.current = null;
+    }
+
+    const granted = await requestMicPermission();
+    if (!granted) {
+      Alert.alert(
+        'Microphone access denied',
+        'Please enable microphone access in your device settings to use this app.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+      return;
+    }
+
+    try {
+      recordingRef.current = await startRecording();
+      setAppState('recording');
+    } catch (e) {
+      setErrorMsg('Could not start recording. Try again.');
+    }
+  }
+
+  async function handleStop() {
+    if (!recordingRef.current) return;
+    setAppState('transcribing'); // reusing this state as "processing" for now
+
+    try {
+      const uri = await stopRecording(recordingRef.current);
+      recordingRef.current = null;
+
+      // Play back your own voice so you can verify the mic is working
+      soundRef.current = await playAudioFromUri(uri);
+      setAppState('idle');
+    } catch (e) {
+      setErrorMsg('Could not process recording. Try again.');
+      setAppState('idle');
     }
   }
 
@@ -34,19 +95,40 @@ export default function HomeScreen() {
           <LanguagePicker
             label="From"
             selected={fromLang}
-            onPress={() => {
-              // language selection modal goes here in Week 3
-              setFromLang(SUPPORTED_LANGUAGES[0]);
-            }}
+            onPress={() => setFromLang(SUPPORTED_LANGUAGES[0])}
           />
-          <Text style={styles.swap}>⇄</Text>
+          <TouchableOpacity
+            onPress={() => {
+              const temp = fromLang;
+              setFromLang(toLang);
+              setToLang(temp);
+            }}
+          >
+            <Text style={styles.swap}>⇄</Text>
+          </TouchableOpacity>
           <LanguagePicker
             label="To"
             selected={toLang}
-            onPress={() => {
-              setToLang(SUPPORTED_LANGUAGES[1]);
-            }}
+            onPress={() => setToLang(SUPPORTED_LANGUAGES[1])}
           />
+        </View>
+
+        {/* Status message */}
+        <View style={styles.statusArea}>
+          {appState === 'transcribing' && (
+            <Text style={styles.statusText}>Processing…</Text>
+          )}
+          {errorMsg && (
+            <Text style={styles.errorText}>{errorMsg}</Text>
+          )}
+          {appState === 'idle' && !errorMsg && (
+            <Text style={styles.hintText}>
+              {canRecord ? 'Ready to record' : 'Tap a language to get started'}
+            </Text>
+          )}
+          {isRecording && (
+            <Text style={styles.recordingText}>Recording…</Text>
+          )}
         </View>
 
         {/* Spacer */}
@@ -57,10 +139,10 @@ export default function HomeScreen() {
           <RecordButton
             isRecording={isRecording}
             onPress={handleRecordPress}
-            disabled={!canRecord}
+            disabled={!canRecord && !isRecording}
           />
           <Text style={styles.recordLabel}>
-            {isRecording ? 'Tap to stop' : canRecord ? 'Tap to record' : 'Select languages to start'}
+            {isRecording ? 'Tap to stop' : canRecord ? 'Tap to record' : 'Select both languages first'}
           </Text>
         </View>
 
@@ -95,6 +177,29 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fontSize.lg,
     paddingBottom: 14,
+  },
+  statusArea: {
+    marginTop: spacing.xl,
+    alignItems: 'center',
+    minHeight: 40,
+  },
+  statusText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+  },
+  recordingText: {
+    color: colors.accent,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  hintText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+  },
+  errorText: {
+    color: colors.destructive,
+    fontSize: fontSize.sm,
+    textAlign: 'center',
   },
   spacer: {
     flex: 1,

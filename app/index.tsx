@@ -1,6 +1,7 @@
 import { Audio } from 'expo-av';
 import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   SafeAreaView,
@@ -11,26 +12,33 @@ import {
 } from 'react-native';
 import LanguagePicker from '../components/LanguagePicker';
 import RecordButton from '../components/RecordButton';
+import TextPanel from '../components/TextPanel';
 import { SUPPORTED_LANGUAGES, Language } from '../lib/languages';
-import { requestMicPermission, startRecording, stopRecording, playAudioFromUri } from '../lib/recorder';
+import { requestMicPermission, startRecording, stopRecording } from '../lib/recorder';
+import { transcribeAudio } from '../lib/api';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
 import { AppState } from '../lib/types';
 
 export default function HomeScreen() {
-  const [fromLang, setFromLang] = useState<Language | null>(null);
-  const [toLang,   setToLang]   = useState<Language | null>(null);
-  const [appState, setAppState] = useState<AppState>('idle');
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [fromLang,   setFromLang]   = useState<Language | null>(null);
+  const [toLang,     setToLang]     = useState<Language | null>(null);
+  const [appState,   setAppState]   = useState<AppState>('idle');
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [errorMsg,   setErrorMsg]   = useState<string | null>(null);
 
-  const recordingRef  = useRef<Audio.Recording | null>(null);
-  const soundRef      = useRef<Audio.Sound | null>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
 
   const isRecording = appState === 'recording';
   const canRecord   = fromLang !== null && toLang !== null && appState === 'idle';
 
+  function handleReRecord() {
+    setTranscript(null);
+    setErrorMsg(null);
+    setAppState('idle');
+  }
+
   async function handleRecordPress() {
     setErrorMsg(null);
-
     if (isRecording) {
       await handleStop();
     } else {
@@ -39,17 +47,11 @@ export default function HomeScreen() {
   }
 
   async function handleRecord() {
-    // Unload any previous playback
-    if (soundRef.current) {
-      await soundRef.current.unloadAsync();
-      soundRef.current = null;
-    }
-
     const granted = await requestMicPermission();
     if (!granted) {
       Alert.alert(
         'Microphone access denied',
-        'Please enable microphone access in your device settings to use this app.',
+        'Please enable microphone access in your device settings.',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Open Settings', onPress: () => Linking.openSettings() },
@@ -57,28 +59,27 @@ export default function HomeScreen() {
       );
       return;
     }
-
     try {
       recordingRef.current = await startRecording();
       setAppState('recording');
-    } catch (e) {
+    } catch {
       setErrorMsg('Could not start recording. Try again.');
     }
   }
 
   async function handleStop() {
     if (!recordingRef.current) return;
-    setAppState('transcribing'); // reusing this state as "processing" for now
+    setAppState('transcribing');
 
     try {
       const uri = await stopRecording(recordingRef.current);
       recordingRef.current = null;
 
-      // Play back your own voice so you can verify the mic is working
-      soundRef.current = await playAudioFromUri(uri);
-      setAppState('idle');
-    } catch (e) {
-      setErrorMsg('Could not process recording. Try again.');
+      const { transcript } = await transcribeAudio(uri, fromLang!.code);
+      setTranscript(transcript);
+      setAppState('review');
+    } catch (e: any) {
+      setErrorMsg(e.message ?? 'Transcription failed. Try again.');
       setAppState('idle');
     }
   }
@@ -113,38 +114,61 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Status message */}
-        <View style={styles.statusArea}>
-          {appState === 'transcribing' && (
-            <Text style={styles.statusText}>Processing…</Text>
-          )}
-          {errorMsg && (
-            <Text style={styles.errorText}>{errorMsg}</Text>
-          )}
-          {appState === 'idle' && !errorMsg && (
-            <Text style={styles.hintText}>
-              {canRecord ? 'Ready to record' : 'Tap a language to get started'}
-            </Text>
-          )}
-          {isRecording && (
-            <Text style={styles.recordingText}>Recording…</Text>
-          )}
-        </View>
+        {/* Transcript card — shown after transcription */}
+        {transcript && appState === 'review' && (
+          <View style={styles.panelArea}>
+            <TextPanel label="You said:" text={transcript} />
+          </View>
+        )}
 
-        {/* Spacer */}
+        {/* Transcribing spinner */}
+        {appState === 'transcribing' && (
+          <View style={styles.spinnerArea}>
+            <ActivityIndicator color={colors.accent} size="large" />
+            <Text style={styles.statusText}>Transcribing…</Text>
+          </View>
+        )}
+
+        {/* Error */}
+        {errorMsg && (
+          <View style={styles.spinnerArea}>
+            <Text style={styles.errorText}>{errorMsg}</Text>
+          </View>
+        )}
+
         <View style={styles.spacer} />
 
+        {/* Review step buttons */}
+        {appState === 'review' && (
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.reRecordBtn} onPress={handleReRecord}>
+              <Text style={styles.reRecordLabel}>Re-record</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.translateBtn, styles.disabledBtn]} disabled>
+              <Text style={styles.translateLabel}>Translate</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Record button */}
-        <View style={styles.recordArea}>
-          <RecordButton
-            isRecording={isRecording}
-            onPress={handleRecordPress}
-            disabled={!canRecord && !isRecording}
-          />
-          <Text style={styles.recordLabel}>
-            {isRecording ? 'Tap to stop' : canRecord ? 'Tap to record' : 'Select both languages first'}
-          </Text>
-        </View>
+        {appState !== 'review' && (
+          <View style={styles.recordArea}>
+            <RecordButton
+              isRecording={isRecording}
+              onPress={handleRecordPress}
+              disabled={!canRecord && !isRecording}
+            />
+            <Text style={styles.recordLabel}>
+              {isRecording
+                ? 'Tap to stop'
+                : appState === 'transcribing'
+                ? 'Processing…'
+                : canRecord
+                ? 'Tap to record'
+                : 'Select both languages first'}
+            </Text>
+          </View>
+        )}
 
       </View>
     </SafeAreaView>
@@ -178,23 +202,18 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     paddingBottom: 14,
   },
-  statusArea: {
+  panelArea: {
+    marginTop: spacing.xl,
+    gap: spacing.md,
+  },
+  spinnerArea: {
     marginTop: spacing.xl,
     alignItems: 'center',
-    minHeight: 40,
+    gap: spacing.sm,
   },
   statusText: {
     color: colors.textSecondary,
     fontSize: fontSize.md,
-  },
-  recordingText: {
-    color: colors.accent,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-  hintText: {
-    color: colors.textSecondary,
-    fontSize: fontSize.sm,
   },
   errorText: {
     color: colors.destructive,
@@ -203,6 +222,41 @@ const styles = StyleSheet.create({
   },
   spacer: {
     flex: 1,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingBottom: spacing.xxl,
+  },
+  reRecordBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.destructive,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reRecordLabel: {
+    color: colors.destructive,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  translateBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabledBtn: {
+    opacity: 0.4,
+  },
+  translateLabel: {
+    color: '#FFFFFF',
+    fontSize: fontSize.md,
+    fontWeight: '600',
   },
   recordArea: {
     alignItems: 'center',

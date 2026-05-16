@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
@@ -42,6 +43,8 @@ export default function HomeScreen() {
   const soundRef       = useRef<Audio.Sound | null>(null);
   const recordStartRef = useRef<number>(0);
 
+  const { width }   = useWindowDimensions();
+  const isTablet    = width >= 600;
   const isRecording = appState === 'recording';
   const canRecord   = fromLang !== null && toLang !== null && appState === 'idle';
 
@@ -161,7 +164,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <View style={[styles.container, isTablet && styles.containerTablet]}>
 
         {/* Title */}
         <Text style={styles.title}>Language Translator</Text>
@@ -198,7 +201,7 @@ export default function HomeScreen() {
         {/* Text panels */}
         {transcript && (
           <View style={styles.panelArea}>
-            <TextPanel label="You said:" text={transcript} />
+            <TextPanel label="You said:" text={transcript} rtl={fromLang?.rtl} />
             {translation && (
               <TextPanel
                 label="Translation:"
@@ -279,6 +282,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  containerTablet: {
+    maxWidth: 480,
+    paddingHorizontal: spacing.xl,
   },
   title: {
     color: colors.textPrimary,

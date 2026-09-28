@@ -1,5 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Language } from '../lib/types';
+import { Language } from '../lib/languages';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
 
 type Props = {
@@ -9,10 +9,19 @@ type Props = {
 };
 
 export default function LanguagePicker({ label, selected, onPress }: Props) {
+  const id = `language-picker-${label.toLowerCase()}`;
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
-      <TouchableOpacity style={styles.picker} onPress={onPress} activeOpacity={0.7}>
+      <TouchableOpacity
+        testID={id}
+        accessibilityRole="button"
+        accessibilityLabel={`${label} language: ${selected ? selected.label : 'not selected'}`}
+        accessibilityHint="Opens the list of languages"
+        style={styles.picker}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
         <Text style={selected ? styles.selected : styles.placeholder}>
           {selected ? selected.label : 'Select language'}
         </Text>

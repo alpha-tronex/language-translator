@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Language Translator",
+    "name": "Thiam LLM Language Translator",
     "slug": "language-translator",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,18 +14,24 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.alpha-tronex.languagetranslator",
+      "bundleIdentifier": "com.alphatronex.languagetranslator",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "This app uses the microphone to record your voice so it can be translated into another language."
+        "NSMicrophoneUsageDescription": "This app uses the microphone to record your voice so it can be translated into another language.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.alpha-tronex.languagetranslator",
+      "package": "com.alphatronex.languagetranslator",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png",
         "backgroundColor": "#0F1117"
       },
-      "permissions": ["android.permission.RECORD_AUDIO"]
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -38,6 +44,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f25cc59a-6ac9-459c-bb49-e722997f071c"
+      }
     }
   }
 }

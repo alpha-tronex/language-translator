@@ -1,6 +1,7 @@
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +14,8 @@ import {
   View,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
+import AlertModal from '../components/AlertModal';
+import ConsentModal from '../components/ConsentModal';
 import LanguageModal from '../components/LanguageModal';
 import LanguagePicker from '../components/LanguagePicker';
 import RecordButton from '../components/RecordButton';
@@ -32,12 +35,26 @@ function showError(message: string) {
 }
 
 export default function HomeScreen() {
-  const [fromLang,    setFromLang]    = useState<Language | null>(null);
-  const [toLang,      setToLang]      = useState<Language | null>(null);
-  const [appState,    setAppState]    = useState<AppState>('idle');
-  const [transcript,  setTranscript]  = useState<string | null>(null);
-  const [translation, setTranslation] = useState<string | null>(null);
-  const [modalTarget, setModalTarget] = useState<'from' | 'to' | null>(null);
+  const [fromLang,          setFromLang]          = useState<Language | null>(null);
+  const [toLang,            setToLang]            = useState<Language | null>(null);
+  const [appState,          setAppState]          = useState<AppState>('idle');
+  const [transcript,        setTranscript]        = useState<string | null>(null);
+  const [translation,       setTranslation]       = useState<string | null>(null);
+  const [modalTarget,       setModalTarget]       = useState<'from' | 'to' | null>(null);
+  const [isStartingAudio,   setIsStartingAudio]   = useState(false);
+  const [showLangAlert,     setShowLangAlert]     = useState(false);
+  const [alertModal,        setAlertModal]        = useState<{ title: string; message: string } | null>(null);
+  const [confirmModal,      setConfirmModal]      = useState<{ onConfirm: () => void } | null>(null);
+  const [showConsent,       setShowConsent]       = useState(false);
+  const [consentGiven,      setConsentGiven]      = useState(false);
+
+  const CONSENT_KEY = 'tlt_consent_v1';
+
+  useEffect(() => {
+    AsyncStorage.getItem(CONSENT_KEY).then((val) => {
+      if (val === 'true') setConsentGiven(true);
+    });
+  }, []);
 
   const recordingRef   = useRef<Audio.Recording | null>(null);
   const soundRef       = useRef<Audio.Sound | null>(null);
@@ -66,6 +83,10 @@ export default function HomeScreen() {
   async function handleRecordPress() {
     if (isRecording) {
       await handleStop();
+    } else if (!fromLang || !toLang) {
+      setShowLangAlert(true);
+    } else if (!consentGiven) {
+      setShowConsent(true);
     } else {
       await handleRecord();
     }
@@ -76,7 +97,12 @@ export default function HomeScreen() {
     setTranscript(null);
     setTranslation(null);
 
+    // Check if permission was already granted before requesting.
+    // If not yet granted, iOS needs extra time to initialize the audio
+    // session after the user taps Allow — otherwise startRecording() fails.
+    const { granted: alreadyGranted } = await Audio.getPermissionsAsync();
     const granted = await requestMicPermission();
+
     if (!granted) {
       Alert.alert(
         'Microphone access denied',
@@ -88,13 +114,35 @@ export default function HomeScreen() {
       );
       return;
     }
-    try {
-      recordingRef.current = await startRecording();
-      recordStartRef.current = Date.now();
-      setAppState('recording');
-    } catch (e) {
-      showError(getErrorMessage(e));
+
+    // Disable the button while we initialize the audio session.
+    setIsStartingAudio(true);
+
+    // On first-ever permission grant iOS needs time to initialize the audio
+    // session. Retry silently up to 3 times with increasing delays before
+    // surfacing any error to the user.
+    const delays = alreadyGranted ? [100] : [1500, 1000, 1000];
+    let lastError: unknown;
+
+    for (const delay of delays) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      try {
+        recordingRef.current = await startRecording();
+        recordStartRef.current = Date.now();
+        setAppState('recording');
+        setIsStartingAudio(false);
+        return;
+      } catch (e) {
+        lastError = e;
+      }
     }
+
+    // All retries failed — show modal error.
+    setAlertModal({
+      title: 'Microphone error',
+      message: getErrorMessage(lastError),
+    });
+    setIsStartingAudio(false);
   }
 
   async function handleStop() {
@@ -102,7 +150,10 @@ export default function HomeScreen() {
 
     const duration = Date.now() - recordStartRef.current;
     if (duration < MIN_RECORDING_MS) {
-      showError('Recording too short — hold the button for at least half a second.');
+      setAlertModal({
+        title: 'Recording too short',
+        message: 'Hold the record button for at least half a second before releasing.',
+      });
       await recordingRef.current.stopAndUnloadAsync().catch(() => {});
       recordingRef.current = null;
       setAppState('idle');
@@ -118,7 +169,7 @@ export default function HomeScreen() {
       setTranscript(transcript);
       setAppState('review');
     } catch (e) {
-      showError(getErrorMessage(e));
+      setAlertModal({ title: 'Transcription failed', message: getErrorMessage(e) });
       setAppState('idle');
     }
   }
@@ -143,12 +194,15 @@ export default function HomeScreen() {
         soundRef.current = sound;
         await sound.playAsync();
       } catch {
-        showError("Couldn't play audio. The translation text is shown above.");
+        setAlertModal({
+          title: 'Audio unavailable',
+          message: "Couldn't play the audio. The translation text is shown above.",
+        });
       }
 
       setAppState('playback');
     } catch (e) {
-      showError(getErrorMessage(e));
+      setAlertModal({ title: 'Translation failed', message: getErrorMessage(e) });
       setAppState('review');
     }
   }
@@ -158,7 +212,10 @@ export default function HomeScreen() {
     try {
       await soundRef.current.replayAsync();
     } catch {
-      showError("Couldn't play audio. Try recording again.");
+      setAlertModal({
+        title: 'Audio unavailable',
+        message: "Couldn't play the audio. Try recording again.",
+      });
     }
   }
 
@@ -167,7 +224,7 @@ export default function HomeScreen() {
       <View style={[styles.container, isTablet && styles.containerTablet]}>
 
         {/* Title */}
-        <Text style={styles.title}>Language Translator</Text>
+        <Text style={styles.title}>Thiam LLM Language Translator</Text>
 
         {/* Language pickers */}
         <View style={styles.pickerRow}>
@@ -177,7 +234,14 @@ export default function HomeScreen() {
             onPress={() => setModalTarget('from')}
           />
           <TouchableOpacity
-            onPress={() => { const t = fromLang; setFromLang(toLang); setToLang(t); }}
+            onPress={() => {
+              const doSwap = () => { const t = fromLang; setFromLang(toLang); setToLang(t); };
+              if (transcript || translation) {
+                setConfirmModal({ onConfirm: () => { cleanupAudio(); setTranscript(null); setTranslation(null); setAppState('idle'); doSwap(); } });
+              } else {
+                doSwap();
+              }
+            }}
           >
             <Text style={styles.swap}>⇄</Text>
           </TouchableOpacity>
@@ -192,10 +256,70 @@ export default function HomeScreen() {
           visible={modalTarget !== null}
           selected={modalTarget === 'from' ? fromLang : toLang}
           onSelect={(lang) => {
-            if (modalTarget === 'from') setFromLang(lang);
-            else setToLang(lang);
+            const isChanging = modalTarget === 'from'
+              ? lang.code !== fromLang?.code
+              : lang.code !== toLang?.code;
+
+            const applyChange = () => {
+              if (modalTarget === 'from') setFromLang(lang);
+              else setToLang(lang);
+            };
+
+            if (isChanging && (transcript || translation)) {
+              // Close language modal first, then show confirmation.
+              setModalTarget(null);
+              setConfirmModal({
+                onConfirm: () => {
+                  cleanupAudio();
+                  setTranscript(null);
+                  setTranslation(null);
+                  setAppState('idle');
+                  applyChange();
+                },
+              });
+            } else {
+              applyChange();
+            }
           }}
           onClose={() => setModalTarget(null)}
+        />
+
+        <AlertModal
+          visible={showLangAlert}
+          title="Select both languages"
+          message={
+            !fromLang
+              ? 'Tap "From" above to choose the language you\'ll speak in.'
+              : 'Tap "To" above to choose the language you want to translate into.'
+          }
+          onClose={() => setShowLangAlert(false)}
+        />
+
+        <AlertModal
+          visible={alertModal !== null}
+          title={alertModal?.title ?? ''}
+          message={alertModal?.message ?? ''}
+          onClose={() => setAlertModal(null)}
+        />
+
+        <AlertModal
+          visible={confirmModal !== null}
+          title="Change language?"
+          message="This will clear your current transcript and translation. Do you want to continue?"
+          confirmLabel="Continue"
+          onConfirm={confirmModal?.onConfirm}
+          onClose={() => setConfirmModal(null)}
+        />
+
+        <ConsentModal
+          visible={showConsent}
+          onAgree={async () => {
+            await AsyncStorage.setItem(CONSENT_KEY, 'true');
+            setConsentGiven(true);
+            setShowConsent(false);
+            await handleRecord();
+          }}
+          onDecline={() => setShowConsent(false)}
         />
 
         {/* Text panels */}
@@ -254,16 +378,16 @@ export default function HomeScreen() {
             <RecordButton
               isRecording={isRecording}
               onPress={handleRecordPress}
-              disabled={!canRecord && !isRecording}
+              disabled={appState === 'transcribing' || appState === 'translating' || isStartingAudio}
             />
             <Text style={styles.recordLabel}>
               {isRecording
                 ? 'Tap to stop'
                 : appState === 'transcribing' || appState === 'translating'
                 ? 'Processing…'
-                : canRecord
-                ? 'Tap to record'
-                : 'Select both languages first'}
+                : !fromLang || !toLang
+                ? 'Select languages above to get started'
+                : 'Tap to record'}
             </Text>
           </View>
         )}

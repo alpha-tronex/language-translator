@@ -1,4 +1,11 @@
+import { ApiClientError } from './apiError';
+
 export function getErrorMessage(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    if (error.isNetworkError) return 'No internet connection — translation needs network.';
+    if (error.isRateLimited) return 'Too many requests — try again in a moment.';
+  }
+
   const msg = error instanceof Error ? error.message.toLowerCase() : '';
 
   if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch')) {

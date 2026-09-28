@@ -1,49 +1,25 @@
-import Constants from 'expo-constants';
+import { httpClient } from './httpClient';
+import { TranscribeResponse, TranslateResponse } from './types';
 
-function getApiUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  const host = Constants.expoConfig?.hostUri?.split(':')[0];
-  return host ? `http://${host}:3000` : 'http://localhost:3000';
-}
+export async function transcribeAudio(uri: string, fromLang: string): Promise<TranscribeResponse> {
+  const form = new FormData();
+  // React Native's FormData takes a { uri, name, type } file descriptor.
+  form.append('audio', { uri, name: 'recording.m4a', type: 'audio/m4a' } as unknown as Blob);
+  form.append('fromLang', fromLang);
 
-export async function transcribeAudio(
-  uri: string,
-  fromLang: string
-): Promise<{ transcript: string }> {
-  const formData = new FormData();
-  formData.append('audio', { uri, name: 'recording.m4a', type: 'audio/m4a' } as any);
-  formData.append('fromLang', fromLang);
-
-  const res = await fetch(`${getApiUrl()}/api/transcribe`, {
-    method: 'POST',
-    body: formData,
+  return httpClient.postForm<TranscribeResponse>('/api/transcribe', form, {
+    errorMessage: 'Transcription failed',
   });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? 'Transcription failed');
-  }
-
-  return res.json();
 }
 
 export async function translateText(
   transcript: string,
   fromLang: string,
   toLang: string
-): Promise<{ translation: string; audioBase64: string; mimeType: string }> {
-  const res = await fetch(`${getApiUrl()}/api/translate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transcript, fromLang, toLang }),
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? 'Translation failed');
-  }
-
-  return res.json();
+): Promise<TranslateResponse> {
+  return httpClient.postJson<TranslateResponse>(
+    '/api/translate',
+    { transcript, fromLang, toLang },
+    { errorMessage: 'Translation failed' }
+  );
 }

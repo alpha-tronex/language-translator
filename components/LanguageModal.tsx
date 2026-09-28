@@ -4,7 +4,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
 } from 'react-native';
 import { SUPPORTED_LANGUAGES, Language } from '../lib/languages';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
@@ -23,16 +22,27 @@ export default function LanguageModal({ visible, selected, onSelect, onClose }: 
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      testID="language-modal"
     >
       {/* Dim overlay — tap to dismiss */}
-      <Pressable style={styles.overlay} onPress={onClose}>
+      <Pressable
+        testID="language-modal-overlay"
+        accessibilityLabel="Close language list"
+        style={styles.overlay}
+        onPress={onClose}
+      >
         <Pressable style={styles.card} onPress={() => {}}>
-          <Text style={styles.heading}>Select language</Text>
+          <Text style={styles.heading} accessibilityRole="header">Select language</Text>
           {SUPPORTED_LANGUAGES.map((lang) => {
             const isSelected = selected?.code === lang.code;
             return (
               <TouchableOpacity
                 key={lang.code}
+                testID={`language-option-${lang.code}`}
+                accessibilityRole="button"
+                accessibilityLabel={`${lang.label} (${lang.nativeLabel})`}
+                accessibilityHint="Selects this language"
+                accessibilityState={{ selected: isSelected }}
                 style={[styles.row, isSelected && styles.rowSelected]}
                 onPress={() => { onSelect(lang); onClose(); }}
                 activeOpacity={0.7}

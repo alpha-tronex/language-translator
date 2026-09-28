@@ -1,0 +1,27 @@
+import { ApiClientError } from '../apiError';
+
+describe('ApiClientError', () => {
+  test('carries the HTTP status and message and is a real Error', () => {
+    const err = new ApiClientError(500, 'Translation failed');
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe('ApiClientError');
+    expect(err.status).toBe(500);
+    expect(err.message).toBe('Translation failed');
+    expect(err.isNetworkError).toBe(false);
+  });
+
+  test('networkError() uses status 0 so callers can tell "offline" from a server error', () => {
+    const cause = new TypeError('Network request failed');
+    const err = ApiClientError.networkError(cause);
+
+    expect(err.status).toBe(0);
+    expect(err.isNetworkError).toBe(true);
+    expect((err as { cause?: unknown }).cause).toBe(cause);
+  });
+
+  test('isRateLimited is true only for 429', () => {
+    expect(new ApiClientError(429, 'slow down').isRateLimited).toBe(true);
+    expect(new ApiClientError(500, 'boom').isRateLimited).toBe(false);
+  });
+});

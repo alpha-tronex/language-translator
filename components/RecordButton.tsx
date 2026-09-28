@@ -23,13 +23,18 @@ export default function RecordButton({ isRecording, onPress, disabled }: Props) 
       glow.stopAnimation();
       glow.setValue(0);
     }
-  }, [isRecording]);
+  }, [isRecording, glow]);
 
   const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] });
   const glowScale  = glow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] });
 
   return (
     <TouchableOpacity
+      testID="record-button"
+      accessibilityRole="button"
+      accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
+      accessibilityHint={isRecording ? 'Stops recording and transcribes what you said' : 'Records what you say'}
+      accessibilityState={{ disabled: !!disabled }}
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.8}

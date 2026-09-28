@@ -5,13 +5,16 @@ type Props = {
   label: string;
   text: string;
   rtl?: boolean;
+  testID?: string;
 };
 
-export default function TextPanel({ label, text, rtl }: Props) {
+export default function TextPanel({ label, text, rtl, testID }: Props) {
   return (
-    <View style={styles.card}>
+    <View style={styles.card} testID={testID}>
       <Text style={styles.label}>{label}</Text>
-      <Text style={[styles.text, rtl && styles.rtl]}>{text}</Text>
+      <Text style={[styles.text, rtl && styles.rtl]} testID={testID ? `${testID}-text` : undefined}>
+        {text}
+      </Text>
     </View>
   );
 }

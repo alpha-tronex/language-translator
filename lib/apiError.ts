@@ -7,11 +7,14 @@
  */
 export class ApiClientError extends Error {
   readonly status: number;
+  /** From the Retry-After header on a 429, in seconds. */
+  readonly retryAfterSeconds?: number;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, retryAfterSeconds?: number) {
     super(message);
     this.name = 'ApiClientError';
     this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 
   /** The request never got a response (offline, DNS, TLS, …). */
@@ -27,5 +30,9 @@ export class ApiClientError extends Error {
 
   get isRateLimited(): boolean {
     return this.status === 429;
+  }
+
+  get isTooLarge(): boolean {
+    return this.status === 413;
   }
 }

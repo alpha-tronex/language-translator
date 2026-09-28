@@ -1,9 +1,22 @@
 import { ApiClientError } from './apiError';
 
+function rateLimitMessage(retryAfterSeconds?: number): string {
+  if (!retryAfterSeconds) return "You're going fast — try again in a minute.";
+  if (retryAfterSeconds <= 1) return "You're going fast — try again in a second.";
+  if (retryAfterSeconds <= 90) return `You're going fast — try again in ${retryAfterSeconds} seconds.`;
+  const minutes = Math.ceil(retryAfterSeconds / 60);
+  return `You're going fast — try again in ${minutes} minutes.`;
+}
+
 export function getErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError) {
     if (error.isNetworkError) return 'No internet connection — translation needs network.';
-    if (error.isRateLimited) return 'Too many requests — try again in a moment.';
+    if (error.isRateLimited) return rateLimitMessage(error.retryAfterSeconds);
+    if (error.isTooLarge) {
+      return error.message === 'Text too long'
+        ? 'That text is too long — try a shorter phrase.'
+        : 'Recording too long — keep it under a minute.';
+    }
   }
 
   const msg = error instanceof Error ? error.message.toLowerCase() : '';
@@ -12,7 +25,7 @@ export function getErrorMessage(error: unknown): string {
     return 'No internet connection — translation needs network.';
   }
   if (msg.includes('429') || msg.includes('rate limit')) {
-    return 'Too many requests — try again in a moment.';
+    return rateLimitMessage();
   }
   if (msg.includes('too short')) {
     return 'Recording too short — hold the button for at least half a second.';

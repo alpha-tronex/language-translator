@@ -1,5 +1,6 @@
 import { ApiClientError } from './apiError';
 import { getApiUrl } from './config';
+import { getDeviceId } from './deviceId';
 
 /**
  * The only module allowed to call fetch() (testability rule R1).
@@ -12,10 +13,21 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
+function parseRetryAfter(value: string | null): number | undefined {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : undefined;
+}
+
 async function request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined),
+    // Lets the backend rate-limit per device (see lib/deviceId.ts).
+    'X-Device-Id': await getDeviceId(),
+  };
+
   let response: Response;
   try {
-    response = await fetch(`${getApiUrl()}${path}`, { ...init, signal: options.signal });
+    response = await fetch(`${getApiUrl()}${path}`, { ...init, headers, signal: options.signal });
   } catch (err) {
     throw ApiClientError.networkError(err);
   }
@@ -39,7 +51,8 @@ async function request<T>(path: string, init: RequestInit, options: RequestOptio
       response.status,
       typeof serverMessage === 'string'
         ? serverMessage
-        : options.errorMessage ?? `Request failed with status ${response.status}`
+        : options.errorMessage ?? `Request failed with status ${response.status}`,
+      response.status === 429 ? parseRetryAfter(response.headers?.get('Retry-After') ?? null) : undefined
     );
   }
 

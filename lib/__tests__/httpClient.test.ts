@@ -2,11 +2,17 @@ import { ApiClientError } from '../apiError';
 import { httpClient } from '../httpClient';
 
 jest.mock('../config', () => ({ getApiUrl: () => 'https://api.test' }));
+jest.mock('../deviceId', () => ({ getDeviceId: jest.fn(async () => 'device-1234-abcd') }));
 
 const fetchMock = jest.fn();
 
-function response(status: number, body: string) {
-  return { ok: status >= 200 && status < 300, status, text: async () => body } as Response;
+function response(status: number, body: string, headers: Record<string, string> = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers(headers),
+    text: async () => body,
+  } as unknown as Response;
 }
 
 async function rejectionOf(promise: Promise<unknown>): Promise<ApiClientError> {
@@ -32,7 +38,7 @@ describe('httpClient.postJson', () => {
     expect(result).toEqual({ translation: 'Hola' });
     expect(fetchMock).toHaveBeenCalledWith('https://api.test/api/translate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Device-Id': 'device-1234-abcd' },
       body: JSON.stringify({ transcript: 'Hello' }),
       signal: undefined,
     });
@@ -65,6 +71,23 @@ describe('httpClient.postJson', () => {
     expect(err.message).toBe('Request failed with status 429');
   });
 
+  test('reads Retry-After on a 429 so the app can say how long to wait', async () => {
+    fetchMock.mockResolvedValue(response(429, JSON.stringify({ error: 'Too many requests' }), { 'Retry-After': '42' }));
+
+    const err = await rejectionOf(httpClient.postJson('/api/translate', {}));
+
+    expect(err.isRateLimited).toBe(true);
+    expect(err.retryAfterSeconds).toBe(42);
+  });
+
+  test('ignores a missing or invalid Retry-After', async () => {
+    fetchMock.mockResolvedValue(response(429, '', { 'Retry-After': 'soon' }));
+
+    const err = await rejectionOf(httpClient.postJson('/api/translate', {}));
+
+    expect(err.retryAfterSeconds).toBeUndefined();
+  });
+
   test('turns a thrown fetch (offline) into a status-0 network error', async () => {
     fetchMock.mockRejectedValue(new TypeError('Network request failed'));
 
@@ -82,7 +105,7 @@ describe('httpClient.postJson', () => {
 });
 
 describe('httpClient.postForm', () => {
-  test('POSTs FormData without a JSON content type (fetch sets the multipart boundary)', async () => {
+  test('POSTs FormData with the device ID but no JSON content type (fetch sets the multipart boundary)', async () => {
     fetchMock.mockResolvedValue(response(200, JSON.stringify({ transcript: 'hi' })));
     const form = new FormData();
 
@@ -92,6 +115,6 @@ describe('httpClient.postForm', () => {
     expect(url).toBe('https://api.test/api/transcribe');
     expect(init.method).toBe('POST');
     expect(init.body).toBe(form);
-    expect(init.headers).toBeUndefined();
+    expect(init.headers).toEqual({ 'X-Device-Id': 'device-1234-abcd' });
   });
 });

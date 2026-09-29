@@ -24,6 +24,12 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(new ApiClientError(429, 'Too many requests', seconds))).toBe(expected);
   });
 
+  test('explains a 401 (unsigned or outdated app) as needing an update', () => {
+    expect(getErrorMessage(new ApiClientError(401, 'App update required'))).toBe(
+      'This version of the app is out of date. Please update it from the App Store.'
+    );
+  });
+
   test('explains a 413 for audio as a recording that is too long', () => {
     expect(getErrorMessage(new ApiClientError(413, 'Recording too long'))).toBe(
       'Recording too long — keep it under a minute.'

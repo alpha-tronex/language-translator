@@ -1,5 +1,6 @@
 import { ApiClientError } from './apiError';
-import { getApiUrl } from './config';
+import { signRequest } from './appSignature';
+import { getApiUrl, getAppSigningKey, getAppVersion } from './config';
 import { getDeviceId } from './deviceId';
 
 /**
@@ -19,11 +20,18 @@ function parseRetryAfter(value: string | null): number | undefined {
 }
 
 async function request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
+  const deviceId = await getDeviceId();
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string> | undefined),
     // Lets the backend rate-limit per device (see lib/deviceId.ts).
-    'X-Device-Id': await getDeviceId(),
+    'X-Device-Id': deviceId,
+    'X-App-Version': getAppVersion(),
   };
+
+  const key = getAppSigningKey();
+  if (key) {
+    Object.assign(headers, await signRequest({ key, method: init.method ?? 'GET', path, deviceId }));
+  }
 
   let response: Response;
   try {

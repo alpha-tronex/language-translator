@@ -32,6 +32,11 @@ export class ApiClientError extends Error {
     return this.status === 429;
   }
 
+  /** The API rejected the app's signature (APP_AUTH_MODE=enforce). */
+  get isUnauthorized(): boolean {
+    return this.status === 401;
+  }
+
   get isTooLarge(): boolean {
     return this.status === 413;
   }

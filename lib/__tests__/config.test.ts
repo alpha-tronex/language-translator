@@ -1,4 +1,4 @@
-import { getApiUrl, PRODUCTION_API_URL } from '../config';
+import { getApiUrl, getAppSigningKey, getAppVersion, PRODUCTION_API_URL } from '../config';
 
 describe('getApiUrl', () => {
   test('uses EXPO_PUBLIC_API_URL when it is set, even in development', () => {
@@ -15,5 +15,26 @@ describe('getApiUrl', () => {
 
   test('treats an empty env var as unset', () => {
     expect(getApiUrl('', undefined)).toBe(PRODUCTION_API_URL);
+  });
+});
+
+describe('getAppSigningKey', () => {
+  test('returns the build-time key, trimmed', () => {
+    expect(getAppSigningKey('  abc123  ')).toBe('abc123');
+  });
+
+  test('returns undefined when unset or blank, so dev builds send unsigned requests', () => {
+    expect(getAppSigningKey(undefined)).toBeUndefined();
+    expect(getAppSigningKey('   ')).toBeUndefined();
+  });
+});
+
+describe('getAppVersion', () => {
+  test('returns the app.json version', () => {
+    expect(getAppVersion('1.1.0')).toBe('1.1.0');
+  });
+
+  test('falls back to "unknown"', () => {
+    expect(getAppVersion(undefined)).toBe('unknown');
   });
 });

@@ -12,6 +12,9 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError) {
     if (error.isNetworkError) return 'No internet connection — translation needs network.';
     if (error.isRateLimited) return rateLimitMessage(error.retryAfterSeconds);
+    if (error.isUnauthorized) {
+      return 'This version of the app is out of date. Please update it from the App Store.';
+    }
     if (error.isTooLarge) {
       return error.message === 'Text too long'
         ? 'That text is too long — try a shorter phrase.'

@@ -1,7 +1,13 @@
+import { createHmac } from 'crypto';
 import { ApiClientError } from '../apiError';
+import { getAppSigningKey } from '../config';
 import { httpClient } from '../httpClient';
 
-jest.mock('../config', () => ({ getApiUrl: () => 'https://api.test' }));
+jest.mock('../config', () => ({
+  getApiUrl: () => 'https://api.test',
+  getAppVersion: () => '1.1.0',
+  getAppSigningKey: jest.fn(() => undefined),
+}));
 jest.mock('../deviceId', () => ({ getDeviceId: jest.fn(async () => 'device-1234-abcd') }));
 
 const fetchMock = jest.fn();
@@ -27,7 +33,10 @@ async function rejectionOf(promise: Promise<unknown>): Promise<ApiClientError> {
 beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch;
 });
-afterEach(() => jest.clearAllMocks());
+afterEach(() => {
+  jest.clearAllMocks();
+  jest.restoreAllMocks();
+});
 
 describe('httpClient.postJson', () => {
   test('POSTs a JSON body to the api base URL and returns the parsed response', async () => {
@@ -38,7 +47,7 @@ describe('httpClient.postJson', () => {
     expect(result).toEqual({ translation: 'Hola' });
     expect(fetchMock).toHaveBeenCalledWith('https://api.test/api/translate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Device-Id': 'device-1234-abcd' },
+      headers: { 'Content-Type': 'application/json', 'X-Device-Id': 'device-1234-abcd', 'X-App-Version': '1.1.0' },
       body: JSON.stringify({ transcript: 'Hello' }),
       signal: undefined,
     });
@@ -115,6 +124,33 @@ describe('httpClient.postForm', () => {
     expect(url).toBe('https://api.test/api/transcribe');
     expect(init.method).toBe('POST');
     expect(init.body).toBe(form);
-    expect(init.headers).toEqual({ 'X-Device-Id': 'device-1234-abcd' });
+    expect(init.headers).toEqual({ 'X-Device-Id': 'device-1234-abcd', 'X-App-Version': '1.1.0' });
+  });
+});
+
+describe('request signing', () => {
+  test('signs every request when a signing key is configured, in the format the API verifies', async () => {
+    (getAppSigningKey as jest.Mock).mockReturnValue('test-key');
+    jest.spyOn(Date, 'now').mockReturnValue(1_800_000_000_500);
+    fetchMock.mockResolvedValue(response(200, '{}'));
+
+    await httpClient.postJson('/api/translate', {});
+
+    const headers = fetchMock.mock.calls[0][1].headers;
+    expect(headers['X-App-Timestamp']).toBe('1800000000');
+    expect(headers['X-App-Signature']).toBe(
+      createHmac('sha256', 'test-key').update('1800000000\nPOST\n/api/translate\ndevice-1234-abcd').digest('hex')
+    );
+  });
+
+  test('sends no signature headers when no key is configured (local dev)', async () => {
+    (getAppSigningKey as jest.Mock).mockReturnValue(undefined);
+    fetchMock.mockResolvedValue(response(200, '{}'));
+
+    await httpClient.postForm('/api/transcribe', new FormData());
+
+    const headers = fetchMock.mock.calls[0][1].headers;
+    expect(headers).not.toHaveProperty('X-App-Signature');
+    expect(headers).not.toHaveProperty('X-App-Timestamp');
   });
 });

@@ -16,3 +16,21 @@ export function getApiUrl(
   const host = hostUri?.split(':')[0];
   return host ? `http://${host}:3000` : PRODUCTION_API_URL;
 }
+
+/**
+ * Key for signing API requests (lib/appSignature.ts). Set per build with an
+ * EAS environment variable; unset in local dev, in which case requests go
+ * out unsigned (the API only logs that unless APP_AUTH_MODE=enforce).
+ * It ships inside the app, so it deters casual abuse but is not a secret
+ * in the strong sense.
+ */
+export function getAppSigningKey(
+  key: string | undefined = process.env.EXPO_PUBLIC_APP_SIGNING_KEY
+): string | undefined {
+  return key?.trim() || undefined;
+}
+
+/** Sent as X-App-Version so the API logs show how much v1.0 traffic remains. */
+export function getAppVersion(version: string | undefined = Constants.expoConfig?.version): string {
+  return version ?? 'unknown';
+}

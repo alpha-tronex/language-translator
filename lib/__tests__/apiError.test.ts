@@ -20,6 +20,11 @@ describe('ApiClientError', () => {
     expect((err as { cause?: unknown }).cause).toBe(cause);
   });
 
+  test('isUnauthorized is true only for 401', () => {
+    expect(new ApiClientError(401, 'App update required').isUnauthorized).toBe(true);
+    expect(new ApiClientError(403, 'nope').isUnauthorized).toBe(false);
+  });
+
   test('isTooLarge is true only for 413', () => {
     expect(new ApiClientError(413, 'Recording too long').isTooLarge).toBe(true);
     expect(new ApiClientError(400, 'bad').isTooLarge).toBe(false);

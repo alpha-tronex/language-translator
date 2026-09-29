@@ -36,6 +36,7 @@ Errors from the backend are always `ApiClientError` (`lib/apiError.ts`). `status
 - `jest.setup.ts`: AsyncStorage uses its official in-memory mock.
 - `__mocks__/expo-crypto.ts`: `randomUUID()` returns predictable UUIDs (`…-000000000001`, `…-000000000002`, …). Call `__reset()` in `beforeEach`.
 - `lib/deviceId.ts` caches the ID in memory. Call `__resetDeviceIdCache()` in `beforeEach`, and mock `../deviceId` in `httpClient` tests.
+- `__mocks__/expo-crypto.ts` also implements `digest()` with Node's crypto, so `lib/hmac.ts` is checked against RFC 4231 and against `createHmac`, which is what the API verifies with.
 - No msw. Mock `global.fetch` only in `httpClient.test.ts`.
 
 ## Writing tests
@@ -50,7 +51,7 @@ Errors from the backend are always `ApiClientError` (`lib/apiError.ts`). `status
 
 ## Known debt (the audit lists this as advisory)
 
-Baseline as of 2026-09-27 (after v2 Week 1): 14 suites, 73 tests, all passing. Lint has 0 errors, typecheck is clean, and the audit's hard checks all report "none".
+Baseline as of 2026-09-28 (after v2 Week 2): 16 suites, 88 tests, all passing. Lint has 0 errors, typecheck is clean, and the audit's hard checks all report "none".
 
 - `app/index.tsx` (503 lines) has no test. It calls `lib/api` directly, holds the whole state machine inline, and reads `Date.now()` for recording length. The v2 Week 4 refactor fixes this. The steps:
   1. Move state transitions into a pure reducer (`lib/translatorMachine.ts`).

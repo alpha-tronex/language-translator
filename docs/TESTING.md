@@ -13,6 +13,14 @@ npm run audit:testability   # scripts/testability-audit.sh
 
 CI (`.github/workflows/ci.yml`) runs the same four steps on every pull request and every push to `main`. It uses Ubuntu and Node 22, runs `npm ci`, and caches the Jest transform cache in `.jest-cache`. Every step runs even if an earlier one fails.
 
+**Releasing to TestFlight:** bump `version` in `app.json`, commit and push, then push a matching tag: `git tag v1.1.0 && git push origin v1.1.0`.
+
+- **What runs:** the checks, then the `release` job, which runs `eas build --platform ios --profile production --auto-submit`.
+- **Version guard:** a tag that doesn't match `app.json` fails before anything is built.
+- **Setup it needs:**
+  - the GitHub secret `EXPO_TOKEN`;
+  - an App Store Connect API key stored in EAS (`eas credentials -p ios`), so the submit can run without you.
+
 ## Layout and seams
 
 This app uses Expo Router, so the layout differs from Quiz Master's `src/features/...`:

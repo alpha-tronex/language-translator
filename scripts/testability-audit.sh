@@ -12,7 +12,9 @@
 #
 # HARD checks fail the run (exit 1): the codebase is currently clean on these,
 # so any hit is a new regression.
-# ADVISORY checks only report: they still list known, pre-existing debt.
+# All checks are HARD since v2 Week 4 (the index.tsx refactor paid off the
+# last advisory debt). Add new checks as ADVISORY first if the codebase
+# isn't clean on them yet, then promote.
 # Must stay bash 3.2-compatible (macOS): feed checks with `report X < <(cmd)`,
 # never `cmd | report X` (a pipeline runs report in a subshell and loses the
 # failure counter).
@@ -56,9 +58,9 @@ grep -rnE '(^|[^.[:alnum:]_])fetch\(' $SRC_DIRS --include='*.ts' --include='*.ts
     | grep -v __tests__ | grep -v '^lib/httpClient.ts:'
 )
 
-section "[HARD] R2: components importing an api module directly"
+section "[HARD] R2: screens/components importing an api module directly"
 report HARD < <(
-grep -rnE "from '(\.\./)+lib/api(/[a-zA-Z.]+)?'" components --include='*.tsx' | grep -v __tests__
+grep -rnE "from '(\.\./)+lib/api(/[a-zA-Z.]+)?'" app components --include='*.tsx' | grep -v __tests__
 )
 
 section "[HARD] T1: un-awaited async RNTL calls in tests"
@@ -78,13 +80,8 @@ report HARD < <(
 grep -rln 'toMatchSnapshot\|toMatchInlineSnapshot' $TEST_DIRS
 )
 
-section "[ADVISORY] R2: screens importing an api module directly (move calls into a hook)"
-report ADVISORY < <(
-grep -rnE "from '(\.\./)+lib/api(/[a-zA-Z.]+)?'" app --include='*.tsx' | grep -v __tests__
-)
-
-section "[ADVISORY] R11: source files with no test"
-report ADVISORY < <(
+section "[HARD] R11: source files with no test"
+report HARD < <(
 find $SRC_DIRS -type f \( -name '*.ts' -o -name '*.tsx' \) ! -path '*__tests__*' ! -name '*.d.ts' ! -name 'index.ts' \
     ! -name 'types.ts' ! -name 'theme.ts' | sort | while read -r f; do
     grep -q '@testability-exempt' "$f" && continue
@@ -93,13 +90,13 @@ find $SRC_DIRS -type f \( -name '*.ts' -o -name '*.tsx' \) ! -path '*__tests__*'
 done
 )
 
-section "[ADVISORY] R5: clock/randomness inside screens/components"
-report ADVISORY < <(
+section "[HARD] R5: clock/randomness inside screens/components"
+report HARD < <(
 grep -rnE 'Date\.now\(|new Date\(\)|Math\.random\(' app components --include='*.tsx' | grep -v __tests__
 )
 
-section "[ADVISORY] R4: screens over 300 lines (extract logic)"
-report ADVISORY < <(
+section "[HARD] R4: screens over 300 lines (extract logic)"
+report HARD < <(
 find app -name '*.tsx' ! -path '*__tests__*' -exec wc -l {} + \
     | grep -v ' total$' | awk '$1>300{print $2" ("$1" lines)"}'
 )
@@ -109,4 +106,4 @@ if [ "$hard_failures" -gt 0 ]; then
     echo "**Result: FAIL** — $hard_failures hard check(s) have findings."
     exit 1
 fi
-echo "**Result: PASS** — no hard-check findings (advisory items above are known debt)."
+echo "**Result: PASS** — no findings."

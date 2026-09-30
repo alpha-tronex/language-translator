@@ -1,5 +1,5 @@
 import * as ExpoAv from 'expo-av';
-import { playAudioFromUri, requestMicPermission, startRecording, stopRecording } from '../recorder';
+import { hasMicPermission, playAudioFromUri, requestMicPermission, startRecording, stopRecording } from '../recorder';
 
 const av = ExpoAv as typeof ExpoAv & {
   __reset(): void;
@@ -60,5 +60,12 @@ describe('playAudioFromUri', () => {
 
     expect(av.__getState().soundsCreated).toEqual(['file:///cache/translation.mp3']);
     expect(sound.playAsync).toHaveBeenCalled();
+  });
+});
+
+describe('hasMicPermission', () => {
+  test('reports an existing grant without prompting', async () => {
+    await expect(hasMicPermission()).resolves.toBe(true);
+    expect(Audio.requestPermissionsAsync).not.toHaveBeenCalled();
   });
 });

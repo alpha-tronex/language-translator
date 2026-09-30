@@ -2,7 +2,7 @@
   "expo": {
     "name": "Thiam LLM Language Translator",
     "slug": "language-translator",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "scheme": "language-translator",
     "userInterfaceStyle": "dark",

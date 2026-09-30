@@ -31,8 +31,11 @@ This app uses Expo Router, so the layout differs from Quiz Master's `src/feature
 | API functions | `lib/api.ts` | `jest.mock('../httpClient')` | `lib/__tests__/` |
 | Pure logic / config | `lib/errors.ts`, `lib/config.ts`, `lib/languages.ts` | nothing | `lib/__tests__/` |
 | Native wrappers | `lib/recorder.ts` | `__mocks__/expo-av.ts` (automatic) | `lib/__tests__/` |
+| State machine (pure) | `lib/translatorMachine.ts` | nothing | `lib/__tests__/` |
+| Screen hooks | `lib/useTranslator.ts`, `lib/useConsent.ts` | `jest.mock('../api')`, `'../recorder'`, `'../audioPlayback'`; clock and sleep injected | `lib/__tests__/` |
+| Audio player | `lib/audioPlayback.ts` | `__mocks__/expo-av.ts`, `__mocks__/expo-file-system/legacy.ts` | `lib/__tests__/` |
 | Shared components | `components/*.tsx` | nothing (props only) | `components/__tests__/` |
-| Screens | `app/*.tsx` | the screen's hook | **`__tests__/app/`** at the repo root |
+| Screens | `app/*.tsx` (layout only) | `jest.mock('../../lib/useTranslator')` and `useConsent` | **`__tests__/app/`** at the repo root |
 
 Screen tests live outside `app/` because Expo Router treats every file in `app/` as a route.
 
@@ -42,6 +45,7 @@ Errors from the backend are always `ApiClientError` (`lib/apiError.ts`). `status
 
 - `__mocks__/expo-av.ts`: in-memory `Audio` (permissions, recording, sound). Test helpers are `__reset()`, `__setState({...})` and `__getState()`. Call `__reset()` in `beforeEach`.
 - `jest.setup.ts`: AsyncStorage uses its official in-memory mock.
+- `__mocks__/expo-file-system/legacy.ts`: an in-memory file store. Test helpers are `__reset()` and `__files()`.
 - `__mocks__/expo-crypto.ts`: `randomUUID()` returns predictable UUIDs (`…-000000000001`, `…-000000000002`, …). Call `__reset()` in `beforeEach`.
 - `lib/deviceId.ts` caches the ID in memory. Call `__resetDeviceIdCache()` in `beforeEach`, and mock `../deviceId` in `httpClient` tests.
 - `__mocks__/expo-crypto.ts` also implements `digest()` with Node's crypto, so `lib/hmac.ts` is checked against RFC 4231 and against `createHmac`, which is what the API verifies with.
@@ -52,22 +56,21 @@ Errors from the backend are always `ApiClientError` (`lib/apiError.ts`). `status
 - **RNTL 14 is async:** `await render(...)`, `await user.press(...)`, `await unmount()`. CI fails on un-awaited calls.
 - **Interactions:** use `userEvent.setup()`. Use `fireEvent` only for events userEvent doesn't model.
 - **Queries:** query the way a user finds things, with `getByRole(..., { name })`, `getByText` or `getByTestId`. No snapshot tests.
-- **testIDs:** kebab-case `<screen-or-component>-<element>[-<kind>]`. Existing ones: `record-button`, `language-picker-from`, `language-picker-to`, `language-modal`, `language-option-<code>`, `alert-modal-*`, `consent-agree-button`, `consent-decline-button`.
+- **testIDs:** kebab-case `<screen-or-component>-<element>[-<kind>]`. Existing ones: `record-button`, `language-picker-from`, `language-picker-to`, `language-modal`, `language-option-<code>`, `alert-modal-*`, `consent-agree-button`, `consent-decline-button`, and on the home screen `home-swap-button`, `home-transcript` (text: `home-transcript-text`), `home-detected-lang`, `home-translation` (`home-translation-text`), `home-loading`, `home-translate-button`, `home-play-button`, `home-rerecord-button` and `home-record-hint`.
 - **Accessibility:** every pressable sets `accessibilityRole`, `accessibilityLabel` and `accessibilityHint`, and titles use `accessibilityRole="header"`. Tests assert these.
 - **Test names:** describe the behavior and why it matters.
 - **Timeouts:** `jest.testTimeout` is 20s repo-wide because the first render test on a cold cache is slow. Don't add per-test timeouts.
 
-## Known debt (the audit lists this as advisory)
+## Status
 
-Baseline as of 2026-09-28 (after v2 Week 2): 16 suites, 88 tests, all passing. Lint has 0 errors, typecheck is clean, and the audit's hard checks all report "none".
+Baseline as of 2026-09-29 (after v2 Week 4): 21 suites, 162 tests, all passing. Lint and typecheck are clean.
 
-- `app/index.tsx` (503 lines) has no test. It calls `lib/api` directly, holds the whole state machine inline, and reads `Date.now()` for recording length. The v2 Week 4 refactor fixes this. The steps:
-  1. Move state transitions into a pure reducer (`lib/translatorMachine.ts`).
-  2. Move the API calls behind hooks, so the screen only uses hooks.
-  3. Pass the clock in, so recording length can be tested with fake timers.
-  4. Add testIDs for the loading, error and review/playback states.
-  5. Add `__tests__/app/index.test.tsx`.
+**Every audit check is now hard.** The week 4 refactor turned `app/index.tsx` (503 lines) into:
 
-  Once that's done, promote the advisory R2 check to hard in `scripts/testability-audit.sh`.
-- `app/_layout.tsx` has no test.
-- There are no end-to-end (Maestro) flows yet. The first one should be: pick languages → record → review → translate → replay.
+- a pure reducer, `lib/translatorMachine.ts`;
+- a side-effect hook, `lib/useTranslator.ts`;
+- a 214-line layout-only screen.
+
+That paid off the last advisory debt: screens calling the API directly, `Date.now()` in the screen, and untested files. When adding a new check the codebase isn't clean on yet, add it as advisory first, then promote it.
+
+**Still to do:** end-to-end (Maestro) flows. The first one should be: pick languages → record → review → translate → replay.

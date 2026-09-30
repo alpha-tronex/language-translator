@@ -1,10 +1,10 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Language } from '../lib/languages';
+import { SourceLanguage } from '../lib/languages';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
 
 type Props = {
   label: string;
-  selected: Language | null;
+  selected: SourceLanguage | null;
   onPress: () => void;
 };
 

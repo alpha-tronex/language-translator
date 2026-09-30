@@ -1,13 +1,3 @@
-import { LanguageCode } from './languages';
-
-export type AppState =
-  | 'idle'           // ready to record
-  | 'recording'      // mic is live
-  | 'transcribing'   // waiting for Whisper
-  | 'review'         // showing transcript, awaiting user action
-  | 'translating'    // waiting for GPT + TTS
-  | 'playback';      // showing translation + play button
-
 export type TranslateResponse = {
   translation:  string;
   audioBase64:  string;
@@ -16,4 +6,6 @@ export type TranslateResponse = {
 
 export type TranscribeResponse = {
   transcript: string;
+  /** Language the speech model heard (e.g. "es"), when it reports one. */
+  detectedLang?: string;
 };

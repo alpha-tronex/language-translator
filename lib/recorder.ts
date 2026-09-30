@@ -1,5 +1,11 @@
 import { Audio } from 'expo-av';
 
+/** Already granted, without prompting. */
+export async function hasMicPermission(): Promise<boolean> {
+  const { granted } = await Audio.getPermissionsAsync();
+  return granted;
+}
+
 export async function requestMicPermission(): Promise<boolean> {
   const { granted } = await Audio.requestPermissionsAsync();
   return granted;

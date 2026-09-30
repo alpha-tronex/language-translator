@@ -1,3 +1,4 @@
+// @testability-exempt: static navigation shell (Stack + Toast), no logic
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Toast from 'react-native-toast-message';

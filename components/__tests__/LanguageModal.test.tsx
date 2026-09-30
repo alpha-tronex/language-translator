@@ -1,5 +1,5 @@
 import { render, screen, userEvent } from '@testing-library/react-native';
-import { SUPPORTED_LANGUAGES } from '../../lib/languages';
+import { AUTO_DETECT, SUPPORTED_LANGUAGES } from '../../lib/languages';
 import LanguageModal from '../LanguageModal';
 
 const arabic = SUPPORTED_LANGUAGES.find((l) => l.code === 'ar')!;
@@ -49,5 +49,31 @@ describe('LanguageModal', () => {
     await render(<LanguageModal visible={false} selected={null} onSelect={jest.fn()} onClose={jest.fn()} />);
 
     expect(screen.queryByText('Select language')).toBeNull();
+  });
+});
+
+describe('LanguageModal options', () => {
+  test('can offer Auto-detect ahead of the languages (for the From picker)', async () => {
+    const user = userEvent.setup();
+    const onSelect = jest.fn();
+    await render(
+      <LanguageModal
+        visible
+        selected={null}
+        onSelect={onSelect}
+        onClose={jest.fn()}
+        options={[AUTO_DETECT, ...SUPPORTED_LANGUAGES]}
+      />
+    );
+
+    await user.press(screen.getByTestId('language-option-auto'));
+
+    expect(onSelect).toHaveBeenCalledWith(AUTO_DETECT);
+  });
+
+  test('does not offer Auto-detect by default (the To picker)', async () => {
+    await render(<LanguageModal visible selected={null} onSelect={jest.fn()} onClose={jest.fn()} />);
+
+    expect(screen.queryByTestId('language-option-auto')).toBeNull();
   });
 });

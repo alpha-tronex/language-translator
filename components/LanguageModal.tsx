@@ -5,17 +5,25 @@ import {
   Text,
   TouchableOpacity,
 } from 'react-native';
-import { SUPPORTED_LANGUAGES, Language } from '../lib/languages';
+import { SourceLanguage, SUPPORTED_LANGUAGES } from '../lib/languages';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
 
 type Props = {
   visible: boolean;
-  selected: Language | null;
-  onSelect: (lang: Language) => void;
+  selected: SourceLanguage | null;
+  onSelect: (lang: SourceLanguage) => void;
   onClose: () => void;
+  /** Defaults to the supported languages; "From" adds Auto-detect on top. */
+  options?: readonly SourceLanguage[];
 };
 
-export default function LanguageModal({ visible, selected, onSelect, onClose }: Props) {
+export default function LanguageModal({
+  visible,
+  selected,
+  onSelect,
+  onClose,
+  options = SUPPORTED_LANGUAGES,
+}: Props) {
   return (
     <Modal
       visible={visible}
@@ -33,7 +41,7 @@ export default function LanguageModal({ visible, selected, onSelect, onClose }: 
       >
         <Pressable style={styles.card} onPress={() => {}}>
           <Text style={styles.heading} accessibilityRole="header">Select language</Text>
-          {SUPPORTED_LANGUAGES.map((lang) => {
+          {options.map((lang) => {
             const isSelected = selected?.code === lang.code;
             return (
               <TouchableOpacity

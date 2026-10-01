@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
-import { transcribeAudio, translateText } from '../api';
+import { transcribeAudio, transcribePracticeAttempt, translateText } from '../api';
 import { ApiClientError } from '../apiError';
 import { createAudioPlayer } from '../audioPlayback';
 import { AUTO_DETECT, Language, SUPPORTED_LANGUAGES } from '../languages';
@@ -12,7 +12,7 @@ jest.mock('../audioPlayback');
 
 const lang = (code: string) => SUPPORTED_LANGUAGES.find((l) => l.code === code) as Language;
 
-const player = { playBase64: jest.fn(), replay: jest.fn(), cleanup: jest.fn() };
+const player = { playBase64: jest.fn(), replay: jest.fn(), stop: jest.fn(), cleanup: jest.fn() };
 const recording = { stopAndUnloadAsync: jest.fn(async () => ({})) };
 let clock = 0;
 const now = () => clock;
@@ -24,6 +24,8 @@ beforeEach(() => {
   player.playBase64.mockResolvedValue(undefined);
   player.replay.mockResolvedValue(undefined);
   player.cleanup.mockResolvedValue(undefined);
+  player.stop.mockResolvedValue(undefined);
+  (transcribePracticeAttempt as jest.Mock).mockResolvedValue({ transcript: 'Donde esta la estacion' });
   (hasMicPermission as jest.Mock).mockResolvedValue(true);
   (requestMicPermission as jest.Mock).mockResolvedValue(true);
   (startRecording as jest.Mock).mockResolvedValue(recording);
@@ -234,5 +236,98 @@ describe('translation and playback', () => {
     await hook.unmount();
 
     expect(player.cleanup).toHaveBeenCalled();
+  });
+});
+
+describe('typed input', () => {
+  test('a typed phrase skips the microphone and is translated like a spoken one', async () => {
+    const hook = await setup();
+
+    await act(async () => {
+      hook.result.current.setInputMode('text');
+      hook.result.current.submitTyped('Where is the library?');
+    });
+    await act(async () => {
+      await hook.result.current.translate();
+    });
+
+    expect(requestMicPermission).not.toHaveBeenCalled();
+    expect(transcribeAudio).not.toHaveBeenCalled();
+    expect(translateText).toHaveBeenCalledWith('Where is the library?', 'en', 'es');
+    expect(hook.result.current.state.inputMode).toBe('text');
+  });
+});
+
+describe('practice (learning mode)', () => {
+  async function toPlayback() {
+    const hook = await setup();
+    await record(hook);
+    await act(async () => {
+      await hook.result.current.translate();
+    });
+    return hook;
+  }
+
+  test('records the attempt and transcribes it in the TARGET language', async () => {
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+    clock += 1500;
+    await act(async () => {
+      await hook.result.current.finishRecording();
+    });
+
+    expect(transcribePracticeAttempt).toHaveBeenCalledWith('file:///cache/rec.m4a', 'es');
+    expect(hook.result.current.state).toMatchObject({
+      phase: 'practiceResult',
+      practiceAttempt: 'Donde esta la estacion',
+      translation: '¿Dónde está la estación?',
+    });
+  });
+
+  test('stops the translation audio so the mic does not hear it, but keeps it for replay', async () => {
+    const hook = await toPlayback();
+    player.cleanup.mockClear();
+
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+
+    expect(player.stop).toHaveBeenCalled();
+    expect(player.cleanup).not.toHaveBeenCalled();
+  });
+
+  test('a failed attempt returns to the translation with a message', async () => {
+    (transcribePracticeAttempt as jest.Mock).mockRejectedValue(ApiClientError.networkError());
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+    clock += 1500;
+    await act(async () => {
+      await hook.result.current.finishRecording();
+    });
+
+    expect(hook.result.current.state).toMatchObject({ phase: 'playback', alert: { title: "Couldn't hear that" } });
+  });
+
+  test('endPractice goes back to the translation', async () => {
+    const hook = await toPlayback();
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+    clock += 1500;
+    await act(async () => {
+      await hook.result.current.finishRecording();
+    });
+
+    await act(async () => {
+      hook.result.current.endPractice();
+    });
+
+    expect(hook.result.current.state.phase).toBe('playback');
   });
 });

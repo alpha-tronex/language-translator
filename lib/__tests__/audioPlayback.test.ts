@@ -32,6 +32,19 @@ describe('createAudioPlayer', () => {
     expect(sound.replayAsync).toHaveBeenCalledTimes(1);
   });
 
+  test('stop pauses playback but keeps the audio for replay', async () => {
+    const player = createAudioPlayer();
+    await player.playBase64('AAAA');
+    const { sound } = await (ExpoAv.Audio.Sound.createAsync as jest.Mock).mock.results[0].value;
+
+    await player.stop();
+    await player.replay();
+
+    expect(sound.stopAsync).toHaveBeenCalled();
+    expect(sound.replayAsync).toHaveBeenCalled();
+    expect(fs.__files().has(TRANSLATION_AUDIO_PATH)).toBe(true);
+  });
+
   test('replay before anything was played fails, so the screen can show an error', async () => {
     await expect(createAudioPlayer().replay()).rejects.toThrow('No audio to replay');
   });

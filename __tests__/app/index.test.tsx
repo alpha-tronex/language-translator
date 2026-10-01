@@ -24,6 +24,10 @@ const actions = {
   setToLang: jest.fn(),
   swapLanguages: jest.fn(),
   dismissAlert: jest.fn(),
+  beginPractice: jest.fn(async () => {}),
+  endPractice: jest.fn(),
+  setInputMode: jest.fn(),
+  submitTyped: jest.fn(),
 };
 const giveConsent = jest.fn(async () => {});
 
@@ -233,5 +237,105 @@ describe('HomeScreen: alerts', () => {
 
     expect(openSettings).toHaveBeenCalled();
     expect(actions.dismissAlert).toHaveBeenCalled();
+  });
+});
+
+describe('HomeScreen: typed input', () => {
+  test('the Speak/Type switch is offered while idle', async () => {
+    const user = userEvent.setup();
+    await renderWith(ready);
+
+    await user.press(screen.getByRole('radio', { name: 'Type' }));
+
+    expect(actions.setInputMode).toHaveBeenCalledWith('text');
+  });
+
+  test('in Type mode the text box replaces the record button', async () => {
+    await renderWith({ ...ready, inputMode: 'text' });
+
+    expect(screen.getByTestId('typed-input-field')).toBeTruthy();
+    expect(screen.queryByTestId('record-button')).toBeNull();
+  });
+
+  test('submitting typed text sends it to review', async () => {
+    const user = userEvent.setup();
+    await renderWith({ ...ready, inputMode: 'text' });
+
+    await user.type(screen.getByTestId('typed-input-field'), 'Where is the library?');
+    await user.press(screen.getByTestId('typed-input-submit'));
+
+    expect(actions.submitTyped).toHaveBeenCalledWith('Where is the library?');
+  });
+
+  test('typed text also needs the one-time OpenAI consent first', async () => {
+    const user = userEvent.setup();
+    await renderWith({ ...ready, inputMode: 'text' }, { consentGiven: false });
+
+    await user.type(screen.getByTestId('typed-input-field'), 'Hello');
+    await user.press(screen.getByTestId('typed-input-submit'));
+    expect(actions.submitTyped).not.toHaveBeenCalled();
+
+    await user.press(screen.getByTestId('consent-agree-button'));
+    expect(actions.submitTyped).toHaveBeenCalledWith('Hello');
+    expect(actions.beginRecording).not.toHaveBeenCalled();
+  });
+
+  test('typed text without languages asks for them first', async () => {
+    const user = userEvent.setup();
+    await renderWith({ inputMode: 'text' });
+
+    await user.type(screen.getByTestId('typed-input-field'), 'Hello');
+    await user.press(screen.getByTestId('typed-input-submit'));
+
+    expect(actions.submitTyped).not.toHaveBeenCalled();
+    expect(screen.getByText('Select both languages')).toBeTruthy();
+  });
+
+  test('a typed transcript is labelled "You typed:"', async () => {
+    await renderWith({ ...review, inputSource: 'typed' });
+
+    expect(screen.getByText('You typed:')).toBeTruthy();
+  });
+});
+
+describe('HomeScreen: practice (learning mode)', () => {
+  test('after a translation, offers to practice saying it', async () => {
+    const user = userEvent.setup();
+    await renderWith(playback);
+
+    await user.press(screen.getByRole('button', { name: 'Practice saying it' }));
+
+    expect(actions.beginPractice).toHaveBeenCalledTimes(1);
+  });
+
+  test('while practising, the record button stops the attempt and the hint says what to do', async () => {
+    const user = userEvent.setup();
+    await renderWith({ ...playback, phase: 'recording', recordingFor: 'practice', recordingStartedAt: 1 });
+
+    expect(screen.getByTestId('home-record-hint')).toHaveTextContent('Say the translation, then tap to stop');
+    await user.press(screen.getByRole('button', { name: 'Stop recording' }));
+
+    expect(actions.finishRecording).toHaveBeenCalledTimes(1);
+  });
+
+  test('shows "Listening…" while the attempt is transcribed', async () => {
+    await renderWith({ ...playback, phase: 'transcribing', recordingFor: 'practice' });
+
+    expect(screen.getByTestId('home-loading')).toHaveTextContent('Listening…');
+  });
+
+  test('the result shows expected vs heard, with Try again and Done', async () => {
+    const user = userEvent.setup();
+    await renderWith({ ...playback, phase: 'practiceResult', practiceAttempt: 'Donde esta la estacion' });
+
+    expect(screen.getByTestId('practice-expected-text')).toHaveTextContent('¿Dónde está la estación?');
+    expect(screen.getByTestId('practice-heard-text')).toHaveTextContent('Donde esta la estacion');
+    expect(screen.queryByTestId('home-practice-button')).toBeNull();
+
+    await user.press(screen.getByRole('button', { name: 'Try again' }));
+    await user.press(screen.getByRole('button', { name: 'Done' }));
+
+    expect(actions.beginPractice).toHaveBeenCalledTimes(1);
+    expect(actions.endPractice).toHaveBeenCalledTimes(1);
   });
 });

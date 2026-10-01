@@ -23,3 +23,17 @@ export async function translateText(
     { errorMessage: 'Translation failed' }
   );
 }
+
+/**
+ * Learning mode: transcribe a practice attempt in the target language.
+ * Only the audio and language go up; the expected phrase stays on the device.
+ */
+export async function transcribePracticeAttempt(uri: string, lang: string): Promise<{ transcript: string }> {
+  const form = new FormData();
+  form.append('audio', { uri, name: 'attempt.m4a', type: 'audio/m4a' } as unknown as Blob);
+  form.append('lang', lang);
+
+  return httpClient.postForm<{ transcript: string }>('/api/practice', form, {
+    errorMessage: 'Practice transcription failed',
+  });
+}

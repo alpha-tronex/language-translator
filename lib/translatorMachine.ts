@@ -8,9 +8,25 @@ import { findLanguage, Language, SourceLanguage } from './languages';
  *   idle → starting → recording → transcribing → review → translating → playback
  *     ↑       │ (mic error)   │ (too short)  │ (error)     ↑   (error) │
  *     └───────┴───────────────┴──────────────┘             └───────────┘
+ *   idle ──(typed text)──→ review
+ *
+ * Practice (learning mode) reuses starting → recording → transcribing with
+ * recordingFor = 'practice', starting from playback and ending in
+ * practiceResult; any failure there returns to playback, keeping the
+ * translation.
  */
 
-export type Phase = 'idle' | 'starting' | 'recording' | 'transcribing' | 'review' | 'translating' | 'playback';
+export type Phase =
+  | 'idle'
+  | 'starting'
+  | 'recording'
+  | 'transcribing'
+  | 'review'
+  | 'translating'
+  | 'playback'
+  | 'practiceResult';
+
+export type InputMode = 'voice' | 'text';
 
 export type AlertState = {
   title: string;
@@ -29,6 +45,14 @@ export type TranslatorState = {
   detectedLang: string | null;
   recordingStartedAt: number | null;
   alert: AlertState | null;
+  /** Speak or type the phrase to translate. */
+  inputMode: InputMode;
+  /** How the current transcript got there. */
+  inputSource: 'voice' | 'typed' | null;
+  /** Whether the microphone is capturing the phrase or a practice attempt. */
+  recordingFor: 'phrase' | 'practice';
+  /** What the speech model heard when the student said the translation back. */
+  practiceAttempt: string | null;
 };
 
 export type TranslatorAction =
@@ -46,11 +70,18 @@ export type TranslatorAction =
   | { type: 'translateRequested' }
   | { type: 'translated'; translation: string }
   | { type: 'translateFailed'; message: string }
+  | { type: 'setInputMode'; mode: InputMode }
+  | { type: 'typedSubmitted'; text: string }
+  | { type: 'practiceRequested' }
+  | { type: 'practiceTranscribed'; transcript: string }
+  | { type: 'practiceDone' }
   | { type: 'showAlert'; alert: AlertState }
   | { type: 'dismissAlert' }
   | { type: 'reset' };
 
 export const MIN_RECORDING_MS = 500;
+/** Same cap the API enforces on transcripts. */
+export const MAX_TYPED_CHARS = 1000;
 
 export const initialTranslatorState: TranslatorState = {
   phase: 'idle',
@@ -61,6 +92,10 @@ export const initialTranslatorState: TranslatorState = {
   detectedLang: null,
   recordingStartedAt: null,
   alert: null,
+  inputMode: 'voice',
+  inputSource: null,
+  recordingFor: 'phrase',
+  practiceAttempt: null,
 };
 
 const cleared = {
@@ -69,7 +104,20 @@ const cleared = {
   translation: null,
   detectedLang: null,
   recordingStartedAt: null,
+  inputSource: null,
+  recordingFor: 'phrase' as const,
+  practiceAttempt: null,
 };
+
+/**
+ * A recording that didn't work out. For the phrase, start over; for a
+ * practice attempt, go back to the translation so it isn't lost.
+ */
+function abortRecording(state: TranslatorState, alert: AlertState): TranslatorState {
+  return state.recordingFor === 'practice'
+    ? { ...state, phase: 'playback', recordingFor: 'phrase', recordingStartedAt: null, alert }
+    : { ...state, ...cleared, alert };
+}
 
 export function translatorReducer(state: TranslatorState, action: TranslatorAction): TranslatorState {
   switch (action.type) {
@@ -82,46 +130,66 @@ export function translatorReducer(state: TranslatorState, action: TranslatorActi
 
     case 'startRequested':
       return canRecord(state) ? { ...state, ...cleared, phase: 'starting' } : state;
+    case 'practiceRequested':
+      return canPractice(state)
+        ? { ...state, phase: 'starting', recordingFor: 'practice', practiceAttempt: null }
+        : state;
     case 'recordingStarted':
       return state.phase === 'starting' ? { ...state, phase: 'recording', recordingStartedAt: action.at } : state;
     case 'micPermissionDenied':
       return state.phase === 'starting'
-        ? {
-            ...state,
-            phase: 'idle',
-            alert: {
-              title: 'Microphone access denied',
-              message: 'Please enable microphone access in your device settings.',
-              action: 'openSettings',
-            },
-          }
+        ? abortRecording(state, {
+            title: 'Microphone access denied',
+            message: 'Please enable microphone access in your device settings.',
+            action: 'openSettings',
+          })
         : state;
     case 'recordingFailed':
       return state.phase === 'starting'
-        ? { ...state, phase: 'idle', alert: { title: 'Microphone error', message: action.message } }
+        ? abortRecording(state, { title: 'Microphone error', message: action.message })
         : state;
 
     case 'recordingTooShort':
       return state.phase === 'recording'
-        ? {
-            ...state,
-            ...cleared,
-            alert: {
-              title: 'Recording too short',
-              message: 'Hold the record button for at least half a second before releasing.',
-            },
-          }
+        ? abortRecording(state, {
+            title: 'Recording too short',
+            message: 'Hold the record button for at least half a second before releasing.',
+          })
         : state;
     case 'transcribing':
       return state.phase === 'recording' ? { ...state, phase: 'transcribing', recordingStartedAt: null } : state;
     case 'transcribed':
-      return state.phase === 'transcribing'
-        ? { ...state, phase: 'review', transcript: action.transcript, detectedLang: action.detectedLang ?? null }
+      return state.phase === 'transcribing' && state.recordingFor === 'phrase'
+        ? {
+            ...state,
+            phase: 'review',
+            transcript: action.transcript,
+            detectedLang: action.detectedLang ?? null,
+            inputSource: 'voice',
+          }
+        : state;
+    case 'practiceTranscribed':
+      return state.phase === 'transcribing' && state.recordingFor === 'practice'
+        ? { ...state, phase: 'practiceResult', recordingFor: 'phrase', practiceAttempt: action.transcript }
         : state;
     case 'transcribeFailed':
       return state.phase === 'transcribing'
-        ? { ...state, ...cleared, alert: { title: 'Transcription failed', message: action.message } }
+        ? abortRecording(state, {
+            title: state.recordingFor === 'practice' ? "Couldn't hear that" : 'Transcription failed',
+            message: action.message,
+          })
         : state;
+    case 'practiceDone':
+      return state.phase === 'practiceResult' ? { ...state, phase: 'playback', practiceAttempt: null } : state;
+
+    case 'setInputMode':
+      return state.phase === 'idle' ? { ...state, inputMode: action.mode } : state;
+    case 'typedSubmitted': {
+      const text = action.text.trim();
+      return canRecord(state) && typedTextError(text) === null
+        ? { ...state, ...cleared, phase: 'review', transcript: text, inputSource: 'typed' }
+        : state;
+    }
 
     case 'translateRequested':
       return state.phase === 'review' && state.transcript && state.toLang ? { ...state, phase: 'translating' } : state;
@@ -161,6 +229,30 @@ export function canSwap(state: TranslatorState): boolean {
   return !isBusy(state) && state.phase !== 'recording' && languagesChosen(state) && state.fromLang?.code !== 'auto';
 }
 
+/** Learning mode: say the translation back once it has been heard. */
+export function canPractice(state: TranslatorState): boolean {
+  return (state.phase === 'playback' || state.phase === 'practiceResult') && state.translation !== null && state.toLang !== null;
+}
+
+/** Why typed text can't be submitted yet, or null when it can. */
+export function typedTextError(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return 'Type a phrase first.';
+  if (trimmed.length > MAX_TYPED_CHARS) return `Keep it under ${MAX_TYPED_CHARS.toLocaleString('en-US')} characters.`;
+  return null;
+}
+
+export function transcriptLabel(state: TranslatorState): string {
+  return state.inputSource === 'typed' ? 'You typed:' : 'You said:';
+}
+
+/** Spinner text for the network waits. */
+export function loadingLabel(state: TranslatorState): string | null {
+  if (state.phase === 'translating') return 'Translating…';
+  if (state.phase !== 'transcribing') return null;
+  return state.recordingFor === 'practice' ? 'Listening…' : 'Transcribing…';
+}
+
 /** A language change would throw away a transcript or translation, so ask first. */
 export function hasResults(state: TranslatorState): boolean {
   return state.transcript !== null || state.translation !== null;
@@ -191,7 +283,7 @@ export function transcriptIsRtl(state: TranslatorState): boolean {
 export function recordHint(state: TranslatorState): string {
   switch (state.phase) {
     case 'recording':
-      return 'Tap to stop';
+      return state.recordingFor === 'practice' ? 'Say the translation, then tap to stop' : 'Tap to stop';
     case 'starting':
       return 'Starting microphone…';
     case 'transcribing':

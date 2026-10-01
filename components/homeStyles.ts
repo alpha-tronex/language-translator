@@ -105,6 +105,20 @@ export const homeStyles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fontSize.sm,
   },
+  practiceBtn: {
+    height: 52,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  practiceLabel: {
+    color: colors.teal,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
   swapDisabled: {
     opacity: 0.3,
   },

@@ -1,6 +1,11 @@
 import { AUTO_DETECT, Language, SUPPORTED_LANGUAGES } from '../languages';
 import {
+  canPractice,
   canRecord,
+  loadingLabel,
+  MAX_TYPED_CHARS,
+  transcriptLabel,
+  typedTextError,
   canSwap,
   detectedLanguageLabel,
   hasResults,
@@ -186,5 +191,103 @@ describe('selectors', () => {
     [run(ready, { type: 'startRequested' }, { type: 'recordingStarted', at: 0 }), 'Tap to stop'],
   ])('recordHint(%#)', (state, hint) => {
     expect(recordHint(state)).toBe(hint);
+  });
+});
+
+describe('typed input', () => {
+  test('a typed phrase goes straight to review, marked as typed', () => {
+    const s = run(ready, { type: 'typedSubmitted', text: '  Where is the library?  ' });
+    expect(s).toMatchObject({ phase: 'review', transcript: 'Where is the library?', inputSource: 'typed' });
+    expect(transcriptLabel(s)).toBe('You typed:');
+  });
+
+  test('empty or over-long text is not submitted', () => {
+    expect(run(ready, { type: 'typedSubmitted', text: '   ' })).toBe(ready);
+    expect(run(ready, { type: 'typedSubmitted', text: 'a'.repeat(MAX_TYPED_CHARS + 1) })).toBe(ready);
+  });
+
+  test('typedTextError explains what is wrong', () => {
+    expect(typedTextError(' ')).toBe('Type a phrase first.');
+    expect(typedTextError('a'.repeat(MAX_TYPED_CHARS + 1))).toBe('Keep it under 1,000 characters.');
+    expect(typedTextError('Hello')).toBeNull();
+  });
+
+  test('needs both languages first, like recording', () => {
+    const noLangs = initialTranslatorState;
+    expect(run(noLangs, { type: 'typedSubmitted', text: 'Hello' })).toBe(noLangs);
+  });
+
+  test('switching between Speak and Type only happens when idle, and survives language changes', () => {
+    const typing = run(ready, { type: 'setInputMode', mode: 'text' });
+    expect(typing.inputMode).toBe('text');
+    expect(run(typing, { type: 'setToLang', lang: ar }).inputMode).toBe('text');
+    expect(run(inReview, { type: 'setInputMode', mode: 'text' })).toBe(inReview);
+  });
+
+  test('spoken transcripts are labelled "You said:"', () => {
+    expect(transcriptLabel(inReview)).toBe('You said:');
+  });
+});
+
+describe('practice (learning mode)', () => {
+  const practising = run(inPlayback, { type: 'practiceRequested' }, { type: 'recordingStarted', at: 5000 });
+
+  test('playback → practice recording → listening → result, keeping the translation', () => {
+    expect(practising).toMatchObject({ phase: 'recording', recordingFor: 'practice' });
+    expect(recordHint(practising)).toBe('Say the translation, then tap to stop');
+
+    const listening = run(practising, { type: 'transcribing' });
+    expect(loadingLabel(listening)).toBe('Listening…');
+
+    const result = run(listening, { type: 'practiceTranscribed', transcript: 'Donde esta la estacion' });
+    expect(result).toMatchObject({
+      phase: 'practiceResult',
+      practiceAttempt: 'Donde esta la estacion',
+      translation: '¿Dónde está la estación?',
+      recordingFor: 'phrase',
+    });
+  });
+
+  test('"Try again" from the result starts a fresh attempt', () => {
+    const result = run(practising, { type: 'transcribing' }, { type: 'practiceTranscribed', transcript: 'x' });
+    const again = run(result, { type: 'practiceRequested' });
+    expect(again).toMatchObject({ phase: 'starting', recordingFor: 'practice', practiceAttempt: null });
+  });
+
+  test('"Done" returns to the translation', () => {
+    const result = run(practising, { type: 'transcribing' }, { type: 'practiceTranscribed', transcript: 'x' });
+    expect(run(result, { type: 'practiceDone' })).toMatchObject({ phase: 'playback', practiceAttempt: null });
+  });
+
+  test('cannot practice before there is a translation', () => {
+    expect(canPractice(inReview)).toBe(false);
+    expect(run(inReview, { type: 'practiceRequested' })).toBe(inReview);
+  });
+
+  test.each([
+    ['mic denied', [{ type: 'micPermissionDenied' }]],
+    ['mic failed', [{ type: 'recordingFailed', message: 'busy' }]],
+  ] as const)('%s during practice returns to the translation instead of wiping it', (_, actions) => {
+    const s = run(inPlayback, { type: 'practiceRequested' }, ...(actions as unknown as TranslatorAction[]));
+    expect(s).toMatchObject({ phase: 'playback', translation: '¿Dónde está la estación?', recordingFor: 'phrase' });
+    expect(s.alert).not.toBeNull();
+  });
+
+  test('a too-short attempt or a failed transcription also returns to the translation', () => {
+    expect(run(practising, { type: 'recordingTooShort' })).toMatchObject({ phase: 'playback', translation: '¿Dónde está la estación?' });
+    const failed = run(practising, { type: 'transcribing' }, { type: 'transcribeFailed', message: 'offline' });
+    expect(failed).toMatchObject({ phase: 'playback', alert: { title: "Couldn't hear that" } });
+  });
+
+  test('a phrase transcript cannot land while a practice attempt is being transcribed (and vice versa)', () => {
+    const listening = run(practising, { type: 'transcribing' });
+    expect(run(listening, { type: 'transcribed', transcript: 'stale' })).toBe(listening);
+    const phraseTranscribing = run(ready, { type: 'startRequested' }, { type: 'recordingStarted', at: 0 }, { type: 'transcribing' });
+    expect(run(phraseTranscribing, { type: 'practiceTranscribed', transcript: 'x' })).toBe(phraseTranscribing);
+  });
+
+  test('reset from a practice result starts over', () => {
+    const result = run(practising, { type: 'transcribing' }, { type: 'practiceTranscribed', transcript: 'x' });
+    expect(run(result, { type: 'reset' })).toMatchObject({ phase: 'idle', translation: null, practiceAttempt: null });
   });
 });

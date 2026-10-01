@@ -1,4 +1,4 @@
-import { transcribeAudio, translateText } from '../api';
+import { transcribeAudio, transcribePracticeAttempt, translateText } from '../api';
 import { httpClient } from '../httpClient';
 
 jest.mock('../httpClient', () => ({
@@ -60,5 +60,21 @@ describe('translateText', () => {
       { transcript: 'Hello', fromLang: 'en', toLang: 'es' },
       { errorMessage: 'Translation failed' }
     );
+  });
+});
+
+describe('transcribePracticeAttempt', () => {
+  test('uploads only the audio and the target language to /api/practice', async () => {
+    postForm.mockResolvedValue({ transcript: 'Donde esta' });
+
+    await expect(transcribePracticeAttempt('file:///cache/att.m4a', 'es')).resolves.toEqual({ transcript: 'Donde esta' });
+
+    const [path, form, options] = postForm.mock.calls[0];
+    expect(path).toBe('/api/practice');
+    expect(options).toEqual({ errorMessage: 'Practice transcription failed' });
+    expect((form as unknown as RecordingFormData).parts).toEqual([
+      ['audio', { uri: 'file:///cache/att.m4a', name: 'attempt.m4a', type: 'audio/m4a' }],
+      ['lang', 'es'],
+    ]);
   });
 });

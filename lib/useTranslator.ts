@@ -1,12 +1,14 @@
 import type { Audio } from 'expo-av';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { transcribeAudio, translateText } from './api';
+import { transcribeAudio, transcribePracticeAttempt, translateText } from './api';
 import { createAudioPlayer } from './audioPlayback';
 import { getErrorMessage } from './errors';
 import { Language, SourceLanguage } from './languages';
 import { hasMicPermission, requestMicPermission, startRecording, stopRecording } from './recorder';
 import {
+  canPractice,
   canRecord,
+  InputMode,
   initialTranslatorState,
   isRecordingTooShort,
   sourceLanguageCode,
@@ -49,11 +51,8 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
     [player]
   );
 
-  const beginRecording = useCallback(async () => {
-    if (!canRecord(stateRef.current)) return;
-    dispatch({ type: 'startRequested' });
-    await player.cleanup();
-
+  /** Mic → recording, shared by the phrase and practice attempts. */
+  const startMicrophone = useCallback(async () => {
     const alreadyGranted = await hasMicPermission();
     if (!(await requestMicPermission())) {
       dispatch({ type: 'micPermissionDenied' });
@@ -72,7 +71,23 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
       }
     }
     dispatch({ type: 'recordingFailed', message: getErrorMessage(lastError) });
-  }, [now, player, sleep]);
+  }, [now, sleep]);
+
+  const beginRecording = useCallback(async () => {
+    if (!canRecord(stateRef.current)) return;
+    dispatch({ type: 'startRequested' });
+    await player.cleanup();
+    await startMicrophone();
+  }, [player, startMicrophone]);
+
+  /** Learning mode: record the student saying the translation back. */
+  const beginPractice = useCallback(async () => {
+    if (!canPractice(stateRef.current)) return;
+    dispatch({ type: 'practiceRequested' });
+    // Stop playback so the mic doesn't pick it up, but keep the audio for replay.
+    await player.stop();
+    await startMicrophone();
+  }, [player, startMicrophone]);
 
   const finishRecording = useCallback(async () => {
     const recording = recordingRef.current;
@@ -89,8 +104,13 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
     dispatch({ type: 'transcribing' });
     try {
       const uri = await stopRecording(recording);
-      const { transcript, detectedLang } = await transcribeAudio(uri, current.fromLang?.code ?? 'auto');
-      dispatch({ type: 'transcribed', transcript, detectedLang });
+      if (current.recordingFor === 'practice') {
+        const { transcript } = await transcribePracticeAttempt(uri, current.toLang?.code ?? '');
+        dispatch({ type: 'practiceTranscribed', transcript });
+      } else {
+        const { transcript, detectedLang } = await transcribeAudio(uri, current.fromLang?.code ?? 'auto');
+        dispatch({ type: 'transcribed', transcript, detectedLang });
+      }
     } catch (e) {
       dispatch({ type: 'transcribeFailed', message: getErrorMessage(e) });
     }
@@ -159,6 +179,16 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
   }, [player]);
 
   const dismissAlert = useCallback(() => dispatch({ type: 'dismissAlert' }), []);
+  const endPractice = useCallback(() => dispatch({ type: 'practiceDone' }), []);
+  const setInputMode = useCallback((mode: InputMode) => dispatch({ type: 'setInputMode', mode }), []);
+  /** Typed phrase → review, skipping the microphone and transcription. */
+  const submitTyped = useCallback(
+    (text: string) => {
+      void player.cleanup();
+      dispatch({ type: 'typedSubmitted', text });
+    },
+    [player]
+  );
 
   return {
     state,
@@ -171,6 +201,10 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
     setToLang,
     swapLanguages,
     dismissAlert,
+    beginPractice,
+    endPractice,
+    setInputMode,
+    submitTyped,
   };
 }
 

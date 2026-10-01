@@ -8,6 +8,8 @@ export type AudioPlayer = {
   playBase64(audioBase64: string): Promise<void>;
   /** Plays the last translation again from the start. */
   replay(): Promise<void>;
+  /** Stops playback but keeps the audio for a later replay. */
+  stop(): Promise<void>;
   /** Unloads the sound and deletes the cached file. Safe to call anytime. */
   cleanup(): Promise<void>;
 };
@@ -37,6 +39,9 @@ export function createAudioPlayer(path: string = TRANSLATION_AUDIO_PATH): AudioP
     async replay() {
       if (!sound) throw new Error('No audio to replay');
       await sound.replayAsync();
+    },
+    async stop() {
+      await sound?.stopAsync().catch(() => {});
     },
     cleanup,
   };

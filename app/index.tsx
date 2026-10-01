@@ -3,20 +3,26 @@ import { ActivityIndicator, Linking, SafeAreaView, Text, TouchableOpacity, useWi
 import AlertModal from '../components/AlertModal';
 import ConsentModal from '../components/ConsentModal';
 import { homeStyles as styles } from '../components/homeStyles';
+import InputModeToggle from '../components/InputModeToggle';
 import LanguageModal from '../components/LanguageModal';
 import LanguagePicker from '../components/LanguagePicker';
+import PracticePanel from '../components/PracticePanel';
 import RecordButton from '../components/RecordButton';
 import TextPanel from '../components/TextPanel';
+import TypedInput from '../components/TypedInput';
 import { AUTO_DETECT, Language, SourceLanguage, SUPPORTED_LANGUAGES } from '../lib/languages';
 import { colors } from '../lib/theme';
 import {
+  canPractice,
   canSwap,
   detectedLanguageLabel,
   hasResults,
   isBusy,
   languagesChosen,
+  loadingLabel,
   recordHint,
   transcriptIsRtl,
+  transcriptLabel,
 } from '../lib/translatorMachine';
 import { useConsent } from '../lib/useConsent';
 import { useTranslator } from '../lib/useTranslator';
@@ -34,13 +40,17 @@ export default function HomeScreen() {
 
   const [picker, setPicker] = useState<'from' | 'to' | null>(null);
   const [showLangAlert, setShowLangAlert] = useState(false);
-  const [showConsent, setShowConsent] = useState(false);
+  /** What to do once the user agrees to the OpenAI notice (record or submit typed text). */
+  const [afterConsent, setAfterConsent] = useState<(() => void) | null>(null);
   const [pendingChange, setPendingChange] = useState<(() => void) | null>(null);
 
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
   const busy = isBusy(state);
   const detected = detectedLanguageLabel(state);
+  const loading = loadingLabel(state);
+  const typing = state.phase === 'idle' && state.inputMode === 'text';
+  const showRecordArea = ['idle', 'starting', 'recording', 'transcribing', 'translating'].includes(state.phase) && !typing;
 
   /** Changing languages throws away the current results, so ask first. */
   function confirmIfResults(apply: () => void) {
@@ -48,16 +58,16 @@ export default function HomeScreen() {
     else apply();
   }
 
+  /** Languages first, then the one-time OpenAI consent, then the action. */
+  function whenReady(action: () => void) {
+    if (!languagesChosen(state)) setShowLangAlert(true);
+    else if (!consentGiven) setAfterConsent(() => action);
+    else action();
+  }
+
   function onRecordPress() {
-    if (state.phase === 'recording') {
-      void translator.finishRecording();
-    } else if (!languagesChosen(state)) {
-      setShowLangAlert(true);
-    } else if (!consentGiven) {
-      setShowConsent(true);
-    } else {
-      void translator.beginRecording();
-    }
+    if (state.phase === 'recording') void translator.finishRecording();
+    else whenReady(() => void translator.beginRecording());
   }
 
   function onSelectLanguage(lang: SourceLanguage) {
@@ -94,7 +104,7 @@ export default function HomeScreen() {
 
         {state.transcript !== null && (
           <View style={styles.panelArea}>
-            <TextPanel label="You said:" text={state.transcript} rtl={transcriptIsRtl(state)} testID="home-transcript" />
+            <TextPanel label={transcriptLabel(state)} text={state.transcript} rtl={transcriptIsRtl(state)} testID="home-transcript" />
             {detected && (
               <View style={styles.detectedChip} testID="home-detected-lang">
                 <Text style={styles.detectedLabel}>Detected: {detected}</Text>
@@ -106,14 +116,48 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {(state.phase === 'transcribing' || state.phase === 'translating') && (
+        {state.phase === 'idle' && (
+          <InputModeToggle mode={state.inputMode} onChange={translator.setInputMode} />
+        )}
+
+        {loading && (
           <View style={styles.spinnerArea} testID="home-loading">
             <ActivityIndicator color={colors.accent} size="large" />
-            <Text style={styles.statusText}>{state.phase === 'transcribing' ? 'Transcribing…' : 'Translating…'}</Text>
+            <Text style={styles.statusText}>{loading}</Text>
           </View>
         )}
 
         <View style={styles.spacer} />
+
+        {typing && (
+          <TypedInput
+            rtl={state.fromLang?.rtl}
+            onSubmit={(text) => whenReady(() => translator.submitTyped(text))}
+          />
+        )}
+
+        {state.phase === 'practiceResult' && (
+          <PracticePanel
+            expected={state.translation ?? ''}
+            heard={state.practiceAttempt ?? ''}
+            rtl={state.toLang?.rtl}
+            onTryAgain={() => void translator.beginPractice()}
+            onDone={translator.endPractice}
+          />
+        )}
+
+        {state.phase === 'playback' && canPractice(state) && (
+          <TouchableOpacity
+            testID="home-practice-button"
+            accessibilityRole="button"
+            accessibilityLabel="Practice saying it"
+            accessibilityHint="Records you saying the translation and shows what the app heard"
+            style={styles.practiceBtn}
+            onPress={() => void translator.beginPractice()}
+          >
+            <Text style={styles.practiceLabel}>Practice saying it</Text>
+          </TouchableOpacity>
+        )}
 
         {(state.phase === 'review' || state.phase === 'playback') && (
           <View style={styles.actionRow}>
@@ -153,7 +197,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {state.phase !== 'review' && state.phase !== 'playback' && (
+        {showRecordArea && (
           <View style={styles.recordArea}>
             <RecordButton isRecording={state.phase === 'recording'} onPress={onRecordPress} disabled={busy} />
             <Text style={styles.recordLabel} testID="home-record-hint">
@@ -200,13 +244,14 @@ export default function HomeScreen() {
         />
 
         <ConsentModal
-          visible={showConsent}
+          visible={afterConsent !== null}
           onAgree={async () => {
-            setShowConsent(false);
+            const next = afterConsent;
+            setAfterConsent(null);
             await giveConsent();
-            await translator.beginRecording();
+            next?.();
           }}
-          onDecline={() => setShowConsent(false)}
+          onDecline={() => setAfterConsent(null)}
         />
       </View>
     </SafeAreaView>

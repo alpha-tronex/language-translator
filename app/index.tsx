@@ -1,5 +1,16 @@
 import { useState } from 'react';
-import { ActivityIndicator, Linking, SafeAreaView, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import AlertModal from '../components/AlertModal';
 import ConsentModal from '../components/ConsentModal';
 import { homeStyles as styles } from '../components/homeStyles';
@@ -81,130 +92,143 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={[styles.container, isTablet && styles.containerTablet]}>
-        <Text style={styles.title} accessibilityRole="header">
-          Thiam LLM Language Translator
-        </Text>
+      {/* Keeps the focused text box above the keyboard; the scroll view lets
+          long content (practice results, long phrases) scroll, and a tap or
+          drag outside the text box closes the keyboard. */}
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          testID="home-scroll"
+          style={styles.flex}
+          contentContainerStyle={[styles.container, isTablet && styles.containerTablet]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title} accessibilityRole="header">
+            Thiam LLM Language Translator
+          </Text>
 
-        <View style={styles.pickerRow}>
-          <LanguagePicker label="From" selected={state.fromLang} onPress={() => setPicker('from')} />
-          <TouchableOpacity
-            testID="home-swap-button"
-            accessibilityRole="button"
-            accessibilityLabel="Swap languages"
-            accessibilityHint="Exchanges the From and To languages"
-            accessibilityState={{ disabled: !canSwap(state) }}
-            disabled={!canSwap(state)}
-            onPress={() => confirmIfResults(translator.swapLanguages)}
-          >
-            <Text style={[styles.swap, !canSwap(state) && styles.swapDisabled]}>⇄</Text>
-          </TouchableOpacity>
-          <LanguagePicker label="To" selected={state.toLang} onPress={() => setPicker('to')} />
-        </View>
-
-        {state.transcript !== null && (
-          <View style={styles.panelArea}>
-            <TextPanel label={transcriptLabel(state)} text={state.transcript} rtl={transcriptIsRtl(state)} testID="home-transcript" />
-            {detected && (
-              <View style={styles.detectedChip} testID="home-detected-lang">
-                <Text style={styles.detectedLabel}>Detected: {detected}</Text>
-              </View>
-            )}
-            {state.translation !== null && (
-              <TextPanel label="Translation:" text={state.translation} rtl={state.toLang?.rtl} testID="home-translation" />
-            )}
-          </View>
-        )}
-
-        {state.phase === 'idle' && (
-          <InputModeToggle mode={state.inputMode} onChange={translator.setInputMode} />
-        )}
-
-        {loading && (
-          <View style={styles.spinnerArea} testID="home-loading">
-            <ActivityIndicator color={colors.accent} size="large" />
-            <Text style={styles.statusText}>{loading}</Text>
-          </View>
-        )}
-
-        <View style={styles.spacer} />
-
-        {typing && (
-          <TypedInput
-            rtl={state.fromLang?.rtl}
-            onSubmit={(text) => whenReady(() => translator.submitTyped(text))}
-          />
-        )}
-
-        {state.phase === 'practiceResult' && (
-          <PracticePanel
-            expected={state.translation ?? ''}
-            heard={state.practiceAttempt ?? ''}
-            rtl={state.toLang?.rtl}
-            onTryAgain={() => void translator.beginPractice()}
-            onDone={translator.endPractice}
-          />
-        )}
-
-        {state.phase === 'playback' && canPractice(state) && (
-          <TouchableOpacity
-            testID="home-practice-button"
-            accessibilityRole="button"
-            accessibilityLabel="Practice saying it"
-            accessibilityHint="Records you saying the translation and shows what the app heard"
-            style={styles.practiceBtn}
-            onPress={() => void translator.beginPractice()}
-          >
-            <Text style={styles.practiceLabel}>Practice saying it</Text>
-          </TouchableOpacity>
-        )}
-
-        {(state.phase === 'review' || state.phase === 'playback') && (
-          <View style={styles.actionRow}>
+          <View style={styles.pickerRow}>
+            <LanguagePicker label="From" selected={state.fromLang} onPress={() => setPicker('from')} />
             <TouchableOpacity
-              testID="home-rerecord-button"
+              testID="home-swap-button"
               accessibilityRole="button"
-              accessibilityLabel="Re-record"
-              accessibilityHint="Clears this phrase so you can record a new one"
-              style={styles.reRecordBtn}
-              onPress={translator.reset}
+              accessibilityLabel="Swap languages"
+              accessibilityHint="Exchanges the From and To languages"
+              accessibilityState={{ disabled: !canSwap(state) }}
+              disabled={!canSwap(state)}
+              onPress={() => confirmIfResults(translator.swapLanguages)}
             >
-              <Text style={styles.reRecordLabel}>Re-record</Text>
+              <Text style={[styles.swap, !canSwap(state) && styles.swapDisabled]}>⇄</Text>
             </TouchableOpacity>
-            {state.phase === 'review' ? (
-              <TouchableOpacity
-                testID="home-translate-button"
-                accessibilityRole="button"
-                accessibilityLabel="Translate"
-                accessibilityHint="Translates what you said and plays it aloud"
-                style={styles.translateBtn}
-                onPress={() => void translator.translate()}
-              >
-                <Text style={styles.translateLabel}>Translate</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                testID="home-play-button"
-                accessibilityRole="button"
-                accessibilityLabel="Play translation"
-                accessibilityHint="Plays the translation again"
-                style={styles.playBtn}
-                onPress={() => void translator.replay()}
-              >
-                <Text style={styles.playLabel}>▶  Play</Text>
-              </TouchableOpacity>
-            )}
+            <LanguagePicker label="To" selected={state.toLang} onPress={() => setPicker('to')} />
           </View>
-        )}
 
-        {showRecordArea && (
-          <View style={styles.recordArea}>
-            <RecordButton isRecording={state.phase === 'recording'} onPress={onRecordPress} disabled={busy} />
-            <Text style={styles.recordLabel} testID="home-record-hint">
-              {recordHint(state)}
-            </Text>
-          </View>
-        )}
+          {state.transcript !== null && (
+            <View style={styles.panelArea}>
+              <TextPanel label={transcriptLabel(state)} text={state.transcript} rtl={transcriptIsRtl(state)} testID="home-transcript" />
+              {detected && (
+                <View style={styles.detectedChip} testID="home-detected-lang">
+                  <Text style={styles.detectedLabel}>Detected: {detected}</Text>
+                </View>
+              )}
+              {state.translation !== null && (
+                <TextPanel label="Translation:" text={state.translation} rtl={state.toLang?.rtl} testID="home-translation" />
+              )}
+            </View>
+          )}
+
+          {state.phase === 'idle' && (
+            <InputModeToggle mode={state.inputMode} onChange={translator.setInputMode} />
+          )}
+
+          {loading && (
+            <View style={styles.spinnerArea} testID="home-loading">
+              <ActivityIndicator color={colors.accent} size="large" />
+              <Text style={styles.statusText}>{loading}</Text>
+            </View>
+          )}
+
+          <View style={styles.spacer} />
+
+          {typing && (
+            <TypedInput
+              rtl={state.fromLang?.rtl}
+              onSubmit={(text) => whenReady(() => translator.submitTyped(text))}
+            />
+          )}
+
+          {state.phase === 'practiceResult' && (
+            <PracticePanel
+              expected={state.translation ?? ''}
+              heard={state.practiceAttempt ?? ''}
+              rtl={state.toLang?.rtl}
+              onTryAgain={() => void translator.beginPractice()}
+              onDone={translator.endPractice}
+            />
+          )}
+
+          {state.phase === 'playback' && canPractice(state) && (
+            <TouchableOpacity
+              testID="home-practice-button"
+              accessibilityRole="button"
+              accessibilityLabel="Practice saying it"
+              accessibilityHint="Records you saying the translation and shows what the app heard"
+              style={styles.practiceBtn}
+              onPress={() => void translator.beginPractice()}
+            >
+              <Text style={styles.practiceLabel}>Practice saying it</Text>
+            </TouchableOpacity>
+          )}
+
+          {(state.phase === 'review' || state.phase === 'playback') && (
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                testID="home-rerecord-button"
+                accessibilityRole="button"
+                accessibilityLabel="Re-record"
+                accessibilityHint="Clears this phrase so you can record a new one"
+                style={styles.reRecordBtn}
+                onPress={translator.reset}
+              >
+                <Text style={styles.reRecordLabel}>Re-record</Text>
+              </TouchableOpacity>
+              {state.phase === 'review' ? (
+                <TouchableOpacity
+                  testID="home-translate-button"
+                  accessibilityRole="button"
+                  accessibilityLabel="Translate"
+                  accessibilityHint="Translates what you said and plays it aloud"
+                  style={styles.translateBtn}
+                  onPress={() => void translator.translate()}
+                >
+                  <Text style={styles.translateLabel}>Translate</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  testID="home-play-button"
+                  accessibilityRole="button"
+                  accessibilityLabel="Play translation"
+                  accessibilityHint="Plays the translation again"
+                  style={styles.playBtn}
+                  onPress={() => void translator.replay()}
+                >
+                  <Text style={styles.playLabel}>▶  Play</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {showRecordArea && (
+            <View style={styles.recordArea}>
+              <RecordButton isRecording={state.phase === 'recording'} onPress={onRecordPress} disabled={busy} />
+              <Text style={styles.recordLabel} testID="home-record-hint">
+                {recordHint(state)}
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
 
         <LanguageModal
           visible={picker !== null}
@@ -253,7 +277,6 @@ export default function HomeScreen() {
           }}
           onDecline={() => setAfterConsent(null)}
         />
-      </View>
     </SafeAreaView>
   );
 }

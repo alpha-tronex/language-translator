@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
+import { Keyboard } from 'react-native';
 import { MAX_TYPED_CHARS } from '../../lib/translatorMachine';
 import TypedInput from '../TypedInput';
 
@@ -40,5 +41,24 @@ describe('TypedInput', () => {
     await render(<TypedInput onSubmit={jest.fn()} rtl />);
 
     expect(screen.getByTestId('typed-input-field')).toHaveStyle({ writingDirection: 'rtl' });
+  });
+
+  test('Continue closes the keyboard so the result is not hidden behind it', async () => {
+    const user = userEvent.setup();
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    await render(<TypedInput onSubmit={jest.fn()} />);
+
+    await user.type(screen.getByTestId('typed-input-field'), 'Hello');
+    await user.press(screen.getByTestId('typed-input-submit'));
+
+    expect(dismiss).toHaveBeenCalled();
+  });
+
+  test('the Return key is "done" and closes the keyboard instead of adding a line', async () => {
+    await render(<TypedInput onSubmit={jest.fn()} />);
+
+    const field = screen.getByTestId('typed-input-field');
+    expect(field.props.returnKeyType).toBe('done');
+    expect(field.props.submitBehavior).toBe('blurAndSubmit');
   });
 });

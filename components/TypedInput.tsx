@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MAX_TYPED_CHARS, typedTextError } from '../lib/translatorMachine';
 import { colors, fontSize, radius, spacing } from '../lib/theme';
 
@@ -20,6 +20,7 @@ export default function TypedInput({ onSubmit, disabled, rtl }: Props) {
       setError(problem);
       return;
     }
+    Keyboard.dismiss();
     onSubmit(text.trim());
   }
 
@@ -38,6 +39,10 @@ export default function TypedInput({ onSubmit, disabled, rtl }: Props) {
         placeholder="Type a phrase…"
         placeholderTextColor={colors.textSecondary}
         multiline
+        // The keyboard's Return key reads "done" and closes the keyboard
+        // instead of adding a line; phrases are short, so no newlines needed.
+        returnKeyType="done"
+        submitBehavior="blurAndSubmit"
         maxLength={MAX_TYPED_CHARS}
         editable={!disabled}
       />
@@ -70,7 +75,7 @@ export default function TypedInput({ onSubmit, disabled, rtl }: Props) {
 const styles = StyleSheet.create({
   wrapper: {
     gap: spacing.sm,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.lg,
   },
   input: {
     minHeight: 96,

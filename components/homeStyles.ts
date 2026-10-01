@@ -7,8 +7,12 @@ export const homeStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  container: {
+  flex: {
     flex: 1,
+  },
+  /** ScrollView content: grows to fill the screen, scrolls when taller. */
+  container: {
+    flexGrow: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     width: '100%',

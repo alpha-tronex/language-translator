@@ -1,4 +1,4 @@
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { render, screen, userEvent, within } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 import HomeScreen from '../../app/index';
 import { AUTO_DETECT, Language, SUPPORTED_LANGUAGES } from '../../lib/languages';
@@ -337,5 +337,21 @@ describe('HomeScreen: practice (learning mode)', () => {
 
     expect(actions.beginPractice).toHaveBeenCalledTimes(1);
     expect(actions.endPractice).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('HomeScreen: keyboard and scrolling', () => {
+  test('content scrolls, and tapping or dragging outside the text box closes the keyboard', async () => {
+    await renderWith({ ...ready, inputMode: 'text' });
+
+    const scroll = screen.getByTestId('home-scroll');
+    expect(scroll.props.keyboardShouldPersistTaps).toBe('handled');
+    expect(scroll.props.keyboardDismissMode).toBe('on-drag');
+  });
+
+  test('the practice result is inside the scroll area, so long phrases can be scrolled', async () => {
+    await renderWith({ ...playback, phase: 'practiceResult', practiceAttempt: 'x' });
+
+    expect(within(screen.getByTestId('home-scroll')).getByTestId('practice-panel')).toBeTruthy();
   });
 });

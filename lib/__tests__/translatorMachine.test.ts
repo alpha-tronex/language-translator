@@ -1,6 +1,8 @@
 import { AUTO_DETECT, Language, SUPPORTED_LANGUAGES } from '../languages';
 import {
+  canOpenSaved,
   canPractice,
+  currentPhrase,
   canRecord,
   loadingLabel,
   practiceResult,
@@ -365,5 +367,100 @@ describe('tap a word to hear it', () => {
 
   test('does nothing before there is a translation', () => {
     expect(run(inReview, { type: 'wordRequested', word: 'x' })).toBe(inReview);
+  });
+});
+
+describe('practice list: opening a saved phrase (week 7)', () => {
+  const saved = { sourceText: 'Thank you', sourceLang: 'en', translation: 'شكرا', targetLang: 'ar' };
+  const opening = run(inPlayback, { type: 'savedRequested', phrase: saved });
+
+  test('puts the saved text on screen with its languages and waits for the audio', () => {
+    expect(opening).toMatchObject({
+      phase: 'translating',
+      fromLang: en,
+      toLang: ar,
+      transcript: 'Thank you',
+      translation: 'شكرا',
+      inputSource: 'saved',
+      practiceScores: [],
+    });
+    expect(loadingLabel(opening)).toBe('Loading audio…');
+    expect(transcriptLabel(opening)).toBe('Phrase:');
+  });
+
+  test('lands in playback when the audio arrives', () => {
+    expect(run(opening, { type: 'translated', translation: 'شكرا' })).toMatchObject({ phase: 'playback', translation: 'شكرا' });
+  });
+
+  test('without audio it still lands in playback with a message, so the phrase can be practiced', () => {
+    const failed = run(opening, { type: 'savedAudioFailed', message: 'No connection.' });
+
+    expect(failed).toMatchObject({ phase: 'playback', translation: 'شكرا', alert: { title: 'Audio unavailable' } });
+    expect(canPractice(failed)).toBe(true);
+  });
+
+  test('a phrase saved from auto-detect with an unknown source opens with "Auto-detect"', () => {
+    const s = run(ready, { type: 'savedRequested', phrase: { ...saved, sourceLang: 'auto' } });
+
+    expect(s.fromLang).toBe(AUTO_DETECT);
+  });
+
+  test('is ignored while recording or waiting on the network, and for a language the app no longer has', () => {
+    const recording = run(ready, { type: 'startRequested' }, { type: 'recordingStarted', at: 1 });
+    const translating = run(inReview, { type: 'translateRequested' });
+
+    expect(canOpenSaved(recording)).toBe(false);
+    expect(run(recording, { type: 'savedRequested', phrase: saved })).toBe(recording);
+    expect(run(translating, { type: 'savedRequested', phrase: saved })).toBe(translating);
+    expect(run(ready, { type: 'savedRequested', phrase: { ...saved, targetLang: 'xx' } })).toBe(ready);
+  });
+
+  test('savedAudioFailed does nothing during a normal translation', () => {
+    const translating = run(inReview, { type: 'translateRequested' });
+
+    expect(run(translating, { type: 'savedAudioFailed', message: 'x' })).toBe(translating);
+  });
+
+  test('works on a fresh launch, before any languages were chosen', () => {
+    expect(run(initialTranslatorState, { type: 'savedRequested', phrase: saved })).toMatchObject({ phase: 'translating', toLang: ar });
+  });
+});
+
+describe('currentPhrase', () => {
+  test('is null until there is a translation', () => {
+    expect(currentPhrase(ready)).toBeNull();
+    expect(currentPhrase(inReview)).toBeNull();
+  });
+
+  test('describes the translation on screen, with the scores so far', () => {
+    const practised = run(
+      inPlayback,
+      { type: 'practiceRequested' },
+      { type: 'recordingStarted', at: 5000 },
+      { type: 'transcribing' },
+      { type: 'practiceTranscribed', transcript: 'donde esta' }
+    );
+
+    expect(currentPhrase(practised)).toEqual({
+      sourceText: 'Where is the station?',
+      sourceLang: 'en',
+      translation: '¿Dónde está la estación?',
+      targetLang: 'es',
+      scores: [50],
+    });
+  });
+
+  test('uses the detected language when "From" was auto-detect', () => {
+    const auto = run(
+      { ...ready, fromLang: AUTO_DETECT },
+      { type: 'startRequested' },
+      { type: 'recordingStarted', at: 1000 },
+      { type: 'transcribing' },
+      { type: 'transcribed', transcript: 'Bonjour', detectedLang: 'fr' },
+      { type: 'translateRequested' },
+      { type: 'translated', translation: 'Hola' }
+    );
+
+    expect(currentPhrase(auto)).toMatchObject({ sourceLang: 'fr', targetLang: 'es' });
   });
 });

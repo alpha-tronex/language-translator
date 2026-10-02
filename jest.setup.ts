@@ -1,3 +1,6 @@
+// Gesture handler's own Jest setup: swipe rows render without native code.
+import 'react-native-gesture-handler/jestSetup';
+
 // Global Jest setup (see docs/TESTING.md).
 // AsyncStorage ships an official in-memory mock; use it everywhere so any
 // module that touches storage can be tested without a device.

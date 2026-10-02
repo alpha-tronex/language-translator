@@ -34,3 +34,11 @@ export function getAppSigningKey(
 export function getAppVersion(version: string | undefined = Constants.expoConfig?.version): string {
   return version ?? 'unknown';
 }
+
+/**
+ * Feature flag for the daily-practice streak on the home screen. On unless
+ * EXPO_PUBLIC_PRACTICE_STREAK is "off", so it can be cut without a code change.
+ */
+export function isStreakEnabled(flag: string | undefined = process.env.EXPO_PUBLIC_PRACTICE_STREAK): boolean {
+  return flag?.trim().toLowerCase() !== 'off';
+}

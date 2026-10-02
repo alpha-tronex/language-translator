@@ -1,12 +1,14 @@
 import type { Audio } from 'expo-av';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { speakText, transcribeAudio, transcribePracticeAttempt, translateText } from './api';
+import { speakPhrase, speakText, transcribeAudio, transcribePracticeAttempt, translateText } from './api';
 import { createAudioPlayer, SLOW_RATE, WORD_AUDIO_PATH } from './audioPlayback';
 import { getErrorMessage } from './errors';
-import { Language, SourceLanguage } from './languages';
-import { wordForSpeech } from './practiceScore';
+import { findLanguage, Language, SourceLanguage } from './languages';
+import { NewPhrase } from './practiceList';
+import { scoreAttempt, wordForSpeech } from './practiceScore';
 import { hasMicPermission, requestMicPermission, startRecording, stopRecording } from './recorder';
 import {
+  canOpenSaved,
   canPractice,
   canRecord,
   InputMode,
@@ -21,6 +23,8 @@ export type TranslatorDeps = {
   /** Injected clock (testability rule R5). */
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** Told about every scored practice attempt, so the practice list can keep best scores and the streak. */
+  onPracticeScored?: (attempt: { translation: string; targetLang: string; score: number }) => void;
 };
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -37,7 +41,7 @@ export const START_DELAYS_MS = [100];
  * the microphone, API and audio side effects. The screen renders `state`
  * and calls these functions; tests mock this hook (rule T4).
  */
-export function useTranslator({ now = Date.now, sleep = defaultSleep }: TranslatorDeps = {}) {
+export function useTranslator({ now = Date.now, sleep = defaultSleep, onPracticeScored }: TranslatorDeps = {}) {
   const [state, dispatch] = useReducer(translatorReducer, initialTranslatorState);
   const [player] = useState(() => createAudioPlayer());
   /** Separate player for single words, so the translation stays ready to replay. */
@@ -47,6 +51,8 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
   const recordingRef = useRef<Audio.Recording | null>(null);
   const stateRef = useRef<TranslatorState>(state);
   stateRef.current = state;
+  const onPracticeScoredRef = useRef(onPracticeScored);
+  onPracticeScoredRef.current = onPracticeScored;
 
   useEffect(
     () => () => {
@@ -114,6 +120,13 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
       if (current.recordingFor === 'practice') {
         const { transcript } = await transcribePracticeAttempt(uri, current.toLang?.code ?? '');
         dispatch({ type: 'practiceTranscribed', transcript });
+        if (current.translation !== null && current.toLang) {
+          onPracticeScoredRef.current?.({
+            translation: current.translation,
+            targetLang: current.toLang.code,
+            score: scoreAttempt(current.translation, transcript, current.toLang.code).score,
+          });
+        }
       } else {
         const { transcript, detectedLang } = await transcribeAudio(uri, current.fromLang?.code ?? 'auto');
         dispatch({ type: 'transcribed', transcript, detectedLang });
@@ -149,6 +162,32 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
       });
     }
   }, [player, wordPlayer]);
+
+  /** Practice list: put a saved phrase on screen and fetch its audio (needs internet). */
+  const openSaved = useCallback(
+    async (phrase: NewPhrase) => {
+      if (!canOpenSaved(stateRef.current) || !findLanguage(phrase.targetLang)) return;
+      dispatch({ type: 'savedRequested', phrase });
+      wordAudio.current.clear();
+      await Promise.all([player.cleanup(), wordPlayer.cleanup()]);
+
+      let audioBase64: string;
+      try {
+        audioBase64 = (await speakPhrase(phrase.translation, phrase.targetLang)).audioBase64;
+        dispatch({ type: 'translated', translation: phrase.translation });
+      } catch (e) {
+        dispatch({ type: 'savedAudioFailed', message: `${getErrorMessage(e)} You can still practice saying it.` });
+        return;
+      }
+      await player.playBase64(audioBase64).catch(() => {
+        dispatch({
+          type: 'showAlert',
+          alert: { title: 'Audio unavailable', message: "Couldn't play the audio. The translation text is shown above." },
+        });
+      });
+    },
+    [player, wordPlayer]
+  );
 
   const replayAt = useCallback(
     async (rate: number) => {
@@ -241,6 +280,7 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
     replay,
     playSlowly,
     speakWord,
+    openSaved,
     reset,
     setFromLang,
     setToLang,

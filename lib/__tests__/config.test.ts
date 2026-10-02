@@ -1,4 +1,4 @@
-import { getApiUrl, getAppSigningKey, getAppVersion, PRODUCTION_API_URL } from '../config';
+import { getApiUrl, getAppSigningKey, getAppVersion, PRODUCTION_API_URL, isStreakEnabled } from '../config';
 
 describe('getApiUrl', () => {
   test('uses EXPO_PUBLIC_API_URL when it is set, even in development', () => {
@@ -36,5 +36,17 @@ describe('getAppVersion', () => {
 
   test('falls back to "unknown"', () => {
     expect(getAppVersion(undefined)).toBe('unknown');
+  });
+});
+
+describe('isStreakEnabled', () => {
+  test('the practice streak is on by default', () => {
+    expect(isStreakEnabled(undefined)).toBe(true);
+    expect(isStreakEnabled('')).toBe(true);
+  });
+
+  test('EXPO_PUBLIC_PRACTICE_STREAK=off cuts it without a code change', () => {
+    expect(isStreakEnabled('off')).toBe(false);
+    expect(isStreakEnabled(' OFF ')).toBe(false);
   });
 });

@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,10 +19,12 @@ import InputModeToggle from '../components/InputModeToggle';
 import LanguageModal from '../components/LanguageModal';
 import LanguagePicker from '../components/LanguagePicker';
 import LearnActions from '../components/LearnActions';
+import PracticeBar from '../components/PracticeBar';
 import PracticePanel from '../components/PracticePanel';
 import RecordButton from '../components/RecordButton';
 import TextPanel from '../components/TextPanel';
 import TypedInput from '../components/TypedInput';
+import { useAppState } from '../lib/AppState';
 import { AUTO_DETECT, Language, SourceLanguage, SUPPORTED_LANGUAGES } from '../lib/languages';
 import { isCharacterBased } from '../lib/practiceScore';
 import { colors } from '../lib/theme';
@@ -39,16 +42,17 @@ import {
   transcriptLabel,
 } from '../lib/translatorMachine';
 import { useConsent } from '../lib/useConsent';
-import { useTranslator } from '../lib/useTranslator';
 
 const FROM_OPTIONS: SourceLanguage[] = [AUTO_DETECT, ...SUPPORTED_LANGUAGES];
 
 /**
  * Layout only. Every decision lives in lib/translatorMachine.ts and every
- * side effect in lib/useTranslator.ts; tests mock those hooks (rule R2/T4).
+ * side effect in lib/useTranslator.ts, shared through lib/AppState.tsx;
+ * tests mock that hook (rule R2/T4).
  */
 export default function HomeScreen() {
-  const translator = useTranslator();
+  const router = useRouter();
+  const { translator, practice, savedCurrent, toggleSaved, streak } = useAppState();
   const { state } = translator;
   const { consentGiven, giveConsent } = useConsent();
 
@@ -111,6 +115,8 @@ export default function HomeScreen() {
           <Text style={styles.title} accessibilityRole="header">
             Thiam LLM Language Translator
           </Text>
+
+          <PracticeBar count={practice.data.phrases.length} streak={streak} onOpen={() => router.push('/practice')} />
 
           <View style={styles.pickerRow}>
             <LanguagePicker label="From" selected={state.fromLang} onPress={() => setPicker('from')} />
@@ -178,6 +184,8 @@ export default function HomeScreen() {
 
           {state.phase === 'playback' && canPractice(state) && (
             <LearnActions
+              saved={savedCurrent !== undefined}
+              onToggleSaved={toggleSaved}
               onPlaySlowly={() => void translator.playSlowly()}
               onPractice={() => void translator.beginPractice()}
             />

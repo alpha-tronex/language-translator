@@ -2,11 +2,14 @@ import { render, screen, userEvent, within } from '@testing-library/react-native
 import { Linking } from 'react-native';
 import HomeScreen from '../../app/index';
 import { AUTO_DETECT, Language, SUPPORTED_LANGUAGES } from '../../lib/languages';
+import { useRouter } from 'expo-router';
+import { useAppState } from '../../lib/AppState';
+import { SavedPhrase } from '../../lib/practiceList';
 import { initialTranslatorState, TranslatorState } from '../../lib/translatorMachine';
 import { useConsent } from '../../lib/useConsent';
-import { useTranslator } from '../../lib/useTranslator';
 
-jest.mock('../../lib/useTranslator');
+jest.mock('expo-router', () => ({ useRouter: jest.fn() }));
+jest.mock('../../lib/AppState');
 jest.mock('../../lib/useConsent');
 
 const lang = (code: string) => SUPPORTED_LANGUAGES.find((l) => l.code === code) as Language;
@@ -21,6 +24,7 @@ const actions = {
   replay: jest.fn(async () => {}),
   playSlowly: jest.fn(async () => {}),
   speakWord: jest.fn(async () => {}),
+  openSaved: jest.fn(async () => {}),
   reset: jest.fn(),
   setFromLang: jest.fn(),
   setToLang: jest.fn(),
@@ -33,8 +37,20 @@ const actions = {
 };
 const giveConsent = jest.fn(async () => {});
 
-function renderWith(state: Partial<TranslatorState>, { consentGiven = true } = {}) {
-  (useTranslator as jest.Mock).mockReturnValue({ state: { ...initialTranslatorState, ...state }, ...actions });
+const toggleSaved = jest.fn();
+const router = { push: jest.fn(), back: jest.fn() };
+
+type Extras = { consentGiven?: boolean; phrases?: SavedPhrase[]; savedCurrent?: SavedPhrase; streak?: number | null };
+
+function renderWith(state: Partial<TranslatorState>, { consentGiven = true, phrases = [], savedCurrent, streak = null }: Extras = {}) {
+  (useRouter as jest.Mock).mockReturnValue(router);
+  (useAppState as jest.Mock).mockReturnValue({
+    translator: { state: { ...initialTranslatorState, ...state }, ...actions },
+    practice: { data: { phrases, practiceDays: [] }, status: 'ready' },
+    savedCurrent,
+    toggleSaved,
+    streak,
+  });
   (useConsent as jest.Mock).mockReturnValue({ consentGiven, giveConsent });
   return render(<HomeScreen />);
 }
@@ -405,5 +421,76 @@ describe('HomeScreen: keyboard and scrolling', () => {
     await renderWith({ ...playback, phase: 'practiceResult', practiceAttempt: 'x' });
 
     expect(within(screen.getByTestId('home-scroll')).getByTestId('practice-panel')).toBeTruthy();
+  });
+});
+
+describe('HomeScreen: practice list (week 7)', () => {
+  const savedStation: SavedPhrase = {
+    id: 'id-1',
+    sourceText: 'Where is the station?',
+    sourceLang: 'en',
+    translation: '¿Dónde está la estación?',
+    targetLang: 'es',
+    createdAt: 1,
+    favorite: true,
+    bestScore: null,
+    attemptCount: 0,
+    nailedCount: 0,
+    lastPracticedAt: null,
+  };
+
+  test('shows how many phrases are saved and opens the practice list', async () => {
+    const user = userEvent.setup();
+    await renderWith(ready, { phrases: [savedStation] });
+
+    await user.press(screen.getByRole('button', { name: 'Practice list, 1 phrase' }));
+
+    expect(router.push).toHaveBeenCalledWith('/practice');
+  });
+
+  test('after a translation, the star saves it to the practice list', async () => {
+    const user = userEvent.setup();
+    await renderWith(playback);
+
+    await user.press(screen.getByRole('button', { name: 'Save to practice list' }));
+
+    expect(toggleSaved).toHaveBeenCalledTimes(1);
+  });
+
+  test('a saved translation shows a filled star that removes it', async () => {
+    const user = userEvent.setup();
+    await renderWith(playback, { phrases: [savedStation], savedCurrent: savedStation });
+
+    expect(screen.getByTestId('home-star-button')).toHaveTextContent('★');
+    await user.press(screen.getByRole('button', { name: 'Remove from practice list' }));
+
+    expect(toggleSaved).toHaveBeenCalledTimes(1);
+  });
+
+  test('there is no star before there is a translation', async () => {
+    await renderWith(review);
+
+    expect(screen.queryByTestId('home-star-button')).toBeNull();
+  });
+
+  test('shows the streak when the feature is on, and hides it when off or zero', async () => {
+    const { rerender } = await renderWith(ready, { streak: 3 });
+    expect(screen.getByTestId('home-streak')).toHaveTextContent('3-day streak');
+
+    (useAppState as jest.Mock).mockReturnValue({ ...(useAppState as jest.Mock)(), streak: null });
+    await rerender(<HomeScreen />);
+    expect(screen.queryByTestId('home-streak')).toBeNull();
+
+    (useAppState as jest.Mock).mockReturnValue({ ...(useAppState as jest.Mock)(), streak: 0 });
+    await rerender(<HomeScreen />);
+    expect(screen.queryByTestId('home-streak')).toBeNull();
+  });
+
+  test('a saved phrase being opened shows "Loading audio…" under its text', async () => {
+    await renderWith({ ...playback, phase: 'translating', inputSource: 'saved' });
+
+    expect(screen.getByTestId('home-loading')).toHaveTextContent('Loading audio…');
+    expect(screen.getByTestId('home-transcript')).toHaveTextContent(/Phrase:/);
+    expect(screen.getByTestId('home-translation-text')).toHaveTextContent('¿Dónde está la estación?');
   });
 });

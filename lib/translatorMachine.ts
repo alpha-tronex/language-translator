@@ -1,4 +1,5 @@
-import { findLanguage, Language, SourceLanguage } from './languages';
+import { AUTO_DETECT, findLanguage, Language, SourceLanguage } from './languages';
+import { NewPhrase } from './practiceList';
 import { PracticeScore, scoreAttempt } from './practiceScore';
 
 /**
@@ -10,6 +11,7 @@ import { PracticeScore, scoreAttempt } from './practiceScore';
  *     ↑       │ (mic error)   │ (too short)  │ (error)     ↑   (error) │
  *     └───────┴───────────────┴──────────────┘             └───────────┘
  *   idle ──(typed text)──→ review
+ *   any quiet phase ──(saved phrase from the practice list)──→ translating (loading audio) → playback
  *
  * Practice (learning mode) reuses starting → recording → transcribing with
  * recordingFor = 'practice', starting from playback and ending in
@@ -49,7 +51,7 @@ export type TranslatorState = {
   /** Speak or type the phrase to translate. */
   inputMode: InputMode;
   /** How the current transcript got there. */
-  inputSource: 'voice' | 'typed' | null;
+  inputSource: 'voice' | 'typed' | 'saved' | null;
   /** Whether the microphone is capturing the phrase or a practice attempt. */
   recordingFor: 'phrase' | 'practice';
   /** What the speech model heard when the student said the translation back. */
@@ -80,6 +82,8 @@ export type TranslatorAction =
   | { type: 'practiceRequested' }
   | { type: 'practiceTranscribed'; transcript: string }
   | { type: 'practiceDone' }
+  | { type: 'savedRequested'; phrase: NewPhrase }
+  | { type: 'savedAudioFailed'; message: string }
   | { type: 'wordRequested'; word: string }
   | { type: 'wordFinished' }
   | { type: 'showAlert'; alert: AlertState }
@@ -225,6 +229,27 @@ export function translatorReducer(state: TranslatorState, action: TranslatorActi
         ? { ...state, phase: 'review', alert: { title: 'Translation failed', message: action.message } }
         : state;
 
+    case 'savedRequested': {
+      const toLang = findLanguage(action.phrase.targetLang);
+      return canOpenSaved(state) && toLang
+        ? {
+            ...state,
+            ...cleared,
+            phase: 'translating',
+            fromLang: findLanguage(action.phrase.sourceLang) ?? AUTO_DETECT,
+            toLang,
+            transcript: action.phrase.sourceText,
+            translation: action.phrase.translation,
+            inputSource: 'saved',
+          }
+        : state;
+    }
+    // The text is already on screen, so a saved phrase can still be practiced without its audio.
+    case 'savedAudioFailed':
+      return state.phase === 'translating' && state.inputSource === 'saved'
+        ? { ...state, phase: 'playback', alert: { title: 'Audio unavailable', message: action.message } }
+        : state;
+
     case 'showAlert':
       return { ...state, alert: action.alert };
     case 'dismissAlert':
@@ -254,6 +279,23 @@ export function canSwap(state: TranslatorState): boolean {
   return !isBusy(state) && state.phase !== 'recording' && languagesChosen(state) && state.fromLang?.code !== 'auto';
 }
 
+/** A saved phrase can replace what's on screen unless the app is mid-recording or waiting on the network. */
+export function canOpenSaved(state: TranslatorState): boolean {
+  return !isBusy(state) && state.phase !== 'recording';
+}
+
+/** The translation on screen as a practice-list entry, or null when there is none. */
+export function currentPhrase(state: TranslatorState): NewPhrase | null {
+  if (state.translation === null || state.toLang === null) return null;
+  return {
+    sourceText: state.transcript ?? '',
+    sourceLang: sourceLanguageCode(state),
+    translation: state.translation,
+    targetLang: state.toLang.code,
+    scores: state.practiceScores,
+  };
+}
+
 /** Learning mode: say the translation back once it has been heard. */
 export function canPractice(state: TranslatorState): boolean {
   return (state.phase === 'playback' || state.phase === 'practiceResult') && state.translation !== null && state.toLang !== null;
@@ -274,12 +316,13 @@ export function typedTextError(text: string): string | null {
 }
 
 export function transcriptLabel(state: TranslatorState): string {
+  if (state.inputSource === 'saved') return 'Phrase:';
   return state.inputSource === 'typed' ? 'You typed:' : 'You said:';
 }
 
 /** Spinner text for the network waits. */
 export function loadingLabel(state: TranslatorState): string | null {
-  if (state.phase === 'translating') return 'Translating…';
+  if (state.phase === 'translating') return state.inputSource === 'saved' ? 'Loading audio…' : 'Translating…';
   if (state.phase !== 'transcribing') return null;
   return state.recordingFor === 'practice' ? 'Listening…' : 'Transcribing…';
 }

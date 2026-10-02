@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react-native';
-import { speakText, transcribeAudio, transcribePracticeAttempt, translateText } from '../api';
+import { speakPhrase, speakText, transcribeAudio, transcribePracticeAttempt, translateText } from '../api';
 import { ApiClientError } from '../apiError';
 import { createAudioPlayer, SLOW_RATE, WORD_AUDIO_PATH } from '../audioPlayback';
 import { AUTO_DETECT, Language, SUPPORTED_LANGUAGES } from '../languages';
@@ -24,6 +24,7 @@ beforeEach(() => {
   (createAudioPlayer as jest.Mock).mockImplementation((path?: string) => (path === WORD_AUDIO_PATH ? wordPlayer : player));
   for (const p of [player, wordPlayer]) Object.values(p).forEach((fn) => fn.mockResolvedValue(undefined));
   (speakText as jest.Mock).mockResolvedValue({ audioBase64: 'WORD' });
+  (speakPhrase as jest.Mock).mockResolvedValue({ audioBase64: 'PHRASE' });
   player.playBase64.mockResolvedValue(undefined);
   player.replay.mockResolvedValue(undefined);
   player.cleanup.mockResolvedValue(undefined);
@@ -475,5 +476,113 @@ describe('learning mode: play slowly and tap a word (week 6)', () => {
     });
 
     expect(hook.result.current.state.practiceScores).toEqual([100]);
+  });
+});
+
+describe('practice list (week 7)', () => {
+  const saved = { sourceText: 'Thank you', sourceLang: 'en', translation: 'Gracias', targetLang: 'es' };
+
+  test('openSaved shows the phrase, fetches its audio without translating again, and plays it', async () => {
+    const hook = await renderHook(() => useTranslator({ now, sleep }));
+
+    await act(async () => {
+      await hook.result.current.openSaved(saved);
+    });
+
+    expect(speakPhrase).toHaveBeenCalledWith('Gracias', 'es');
+    expect(translateText).not.toHaveBeenCalled();
+    expect(player.playBase64).toHaveBeenCalledWith('PHRASE');
+    expect(hook.result.current.state).toMatchObject({
+      phase: 'playback',
+      transcript: 'Thank you',
+      translation: 'Gracias',
+      inputSource: 'saved',
+    });
+  });
+
+  test('openSaved without a connection still shows the phrase so it can be practiced', async () => {
+    (speakPhrase as jest.Mock).mockRejectedValue(ApiClientError.networkError());
+    const hook = await renderHook(() => useTranslator({ now, sleep }));
+
+    await act(async () => {
+      await hook.result.current.openSaved(saved);
+    });
+
+    expect(hook.result.current.state).toMatchObject({ phase: 'playback', translation: 'Gracias' });
+    expect(hook.result.current.state.alert?.message).toMatch(/You can still practice saying it\.$/);
+    expect(player.playBase64).not.toHaveBeenCalled();
+  });
+
+  test('openSaved clears the previous audio first', async () => {
+    const hook = await setup();
+    await record(hook);
+    await act(async () => {
+      await hook.result.current.translate();
+    });
+    player.cleanup.mockClear();
+
+    await act(async () => {
+      await hook.result.current.openSaved(saved);
+    });
+
+    expect(player.cleanup).toHaveBeenCalled();
+    expect(wordPlayer.cleanup).toHaveBeenCalled();
+  });
+
+  test('openSaved does nothing mid-recording or for a language the app does not have', async () => {
+    const hook = await setup();
+    await act(async () => {
+      await hook.result.current.beginRecording();
+    });
+
+    await act(async () => {
+      await hook.result.current.openSaved(saved);
+      await hook.result.current.openSaved({ ...saved, targetLang: 'xx' });
+    });
+
+    expect(speakPhrase).not.toHaveBeenCalled();
+    expect(hook.result.current.state.phase).toBe('recording');
+  });
+
+  test('reports every scored practice attempt, so the practice list can keep best scores and the streak', async () => {
+    const onPracticeScored = jest.fn();
+    const hook = await renderHook(() => useTranslator({ now, sleep, onPracticeScored }));
+    await act(async () => {
+      hook.result.current.setFromLang(lang('en'));
+      hook.result.current.setToLang(lang('es'));
+    });
+    await record(hook);
+    await act(async () => {
+      await hook.result.current.translate();
+    });
+
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+    clock += 1500;
+    await act(async () => {
+      await hook.result.current.finishRecording();
+    });
+
+    expect(onPracticeScored).toHaveBeenCalledWith({ translation: '¿Dónde está la estación?', targetLang: 'es', score: 100 });
+  });
+
+  test('a failed attempt reports nothing', async () => {
+    (transcribePracticeAttempt as jest.Mock).mockRejectedValue(ApiClientError.networkError());
+    const onPracticeScored = jest.fn();
+    const hook = await renderHook(() => useTranslator({ now, sleep, onPracticeScored }));
+    await act(async () => {
+      await hook.result.current.openSaved(saved);
+    });
+
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+    clock += 1500;
+    await act(async () => {
+      await hook.result.current.finishRecording();
+    });
+
+    expect(onPracticeScored).not.toHaveBeenCalled();
   });
 });

@@ -31,6 +31,7 @@ class MockRecording {
 class MockSound {
   playAsync = jest.fn(async () => ({}));
   replayAsync = jest.fn(async () => ({}));
+  setRateAsync = jest.fn(async (rate: number, shouldCorrectPitch: boolean) => ({ rate, shouldCorrectPitch }));
   stopAsync = jest.fn(async () => ({}));
   unloadAsync = jest.fn(async () => ({}));
 }

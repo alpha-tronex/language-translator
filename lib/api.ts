@@ -24,6 +24,15 @@ export async function translateText(
   );
 }
 
+/** Learning mode: audio for one word of the translation ("tap a word to hear it"). */
+export async function speakText(text: string, lang: string): Promise<{ audioBase64: string }> {
+  return httpClient.postJson<{ audioBase64: string }>(
+    '/api/speak',
+    { text, lang },
+    { errorMessage: "Couldn't load the audio" }
+  );
+}
+
 /**
  * Learning mode: transcribe a practice attempt in the target language.
  * Only the audio and language go up; the expected phrase stays on the device.

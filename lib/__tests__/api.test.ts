@@ -1,4 +1,4 @@
-import { transcribeAudio, transcribePracticeAttempt, translateText } from '../api';
+import { speakText, transcribeAudio, transcribePracticeAttempt, translateText } from '../api';
 import { httpClient } from '../httpClient';
 
 jest.mock('../httpClient', () => ({
@@ -76,5 +76,19 @@ describe('transcribePracticeAttempt', () => {
       ['audio', { uri: 'file:///cache/att.m4a', name: 'attempt.m4a', type: 'audio/m4a' }],
       ['lang', 'es'],
     ]);
+  });
+});
+
+describe('speakText', () => {
+  test('asks /api/speak for one word in the given language', async () => {
+    postJson.mockResolvedValue({ audioBase64: 'AAAA', mimeType: 'audio/mpeg' });
+
+    await expect(speakText('estación', 'es')).resolves.toMatchObject({ audioBase64: 'AAAA' });
+
+    expect(postJson).toHaveBeenCalledWith(
+      '/api/speak',
+      { text: 'estación', lang: 'es' },
+      { errorMessage: "Couldn't load the audio" }
+    );
   });
 });

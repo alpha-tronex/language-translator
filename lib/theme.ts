@@ -3,6 +3,8 @@ export const colors = {
   surface:       '#1C1F2E',
   accent:        '#FF6B6B',
   teal:          '#4ECDC4',
+  success:       '#6BCB77',
+  warning:       '#F4B860',
   textPrimary:   '#F0F0F0',
   textSecondary: '#8A8FA8',
   destructive:   '#C0392B',

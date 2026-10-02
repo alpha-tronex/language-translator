@@ -17,11 +17,13 @@ import { homeStyles as styles } from '../components/homeStyles';
 import InputModeToggle from '../components/InputModeToggle';
 import LanguageModal from '../components/LanguageModal';
 import LanguagePicker from '../components/LanguagePicker';
+import LearnActions from '../components/LearnActions';
 import PracticePanel from '../components/PracticePanel';
 import RecordButton from '../components/RecordButton';
 import TextPanel from '../components/TextPanel';
 import TypedInput from '../components/TypedInput';
 import { AUTO_DETECT, Language, SourceLanguage, SUPPORTED_LANGUAGES } from '../lib/languages';
+import { isCharacterBased } from '../lib/practiceScore';
 import { colors } from '../lib/theme';
 import {
   canPractice,
@@ -31,6 +33,7 @@ import {
   isBusy,
   languagesChosen,
   loadingLabel,
+  practiceResult,
   recordHint,
   transcriptIsRtl,
   transcriptLabel,
@@ -60,6 +63,7 @@ export default function HomeScreen() {
   const busy = isBusy(state);
   const detected = detectedLanguageLabel(state);
   const loading = loadingLabel(state);
+  const result = practiceResult(state);
   const typing = state.phase === 'idle' && state.inputMode === 'text';
   const showRecordArea = ['idle', 'starting', 'recording', 'transcribing', 'translating'].includes(state.phase) && !typing;
 
@@ -158,27 +162,25 @@ export default function HomeScreen() {
             />
           )}
 
-          {state.phase === 'practiceResult' && (
+          {result && (
             <PracticePanel
-              expected={state.translation ?? ''}
-              heard={state.practiceAttempt ?? ''}
+              result={result}
+              scores={state.practiceScores}
+              characterBased={isCharacterBased(state.toLang?.code)}
               rtl={state.toLang?.rtl}
+              speakingWord={state.speakingWord}
+              onWordPress={(word) => void translator.speakWord(word)}
+              onPlaySlowly={() => void translator.playSlowly()}
               onTryAgain={() => void translator.beginPractice()}
               onDone={translator.endPractice}
             />
           )}
 
           {state.phase === 'playback' && canPractice(state) && (
-            <TouchableOpacity
-              testID="home-practice-button"
-              accessibilityRole="button"
-              accessibilityLabel="Practice saying it"
-              accessibilityHint="Records you saying the translation and shows what the app heard"
-              style={styles.practiceBtn}
-              onPress={() => void translator.beginPractice()}
-            >
-              <Text style={styles.practiceLabel}>Practice saying it</Text>
-            </TouchableOpacity>
+            <LearnActions
+              onPlaySlowly={() => void translator.playSlowly()}
+              onPractice={() => void translator.beginPractice()}
+            />
           )}
 
           {(state.phase === 'review' || state.phase === 'playback') && (

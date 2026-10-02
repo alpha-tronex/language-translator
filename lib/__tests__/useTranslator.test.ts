@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react-native';
-import { transcribeAudio, transcribePracticeAttempt, translateText } from '../api';
+import { speakText, transcribeAudio, transcribePracticeAttempt, translateText } from '../api';
 import { ApiClientError } from '../apiError';
-import { createAudioPlayer } from '../audioPlayback';
+import { createAudioPlayer, SLOW_RATE, WORD_AUDIO_PATH } from '../audioPlayback';
 import { AUTO_DETECT, Language, SUPPORTED_LANGUAGES } from '../languages';
 import { hasMicPermission, requestMicPermission, startRecording, stopRecording } from '../recorder';
 import { START_DELAYS_FIRST_GRANT_MS, START_DELAYS_MS, useTranslator } from '../useTranslator';
@@ -13,6 +13,7 @@ jest.mock('../audioPlayback');
 const lang = (code: string) => SUPPORTED_LANGUAGES.find((l) => l.code === code) as Language;
 
 const player = { playBase64: jest.fn(), replay: jest.fn(), stop: jest.fn(), cleanup: jest.fn() };
+const wordPlayer = { playBase64: jest.fn(), replay: jest.fn(), stop: jest.fn(), cleanup: jest.fn() };
 const recording = { stopAndUnloadAsync: jest.fn(async () => ({})) };
 let clock = 0;
 const now = () => clock;
@@ -20,7 +21,9 @@ const sleep = jest.fn(async () => {});
 
 beforeEach(() => {
   clock = 10_000;
-  (createAudioPlayer as jest.Mock).mockReturnValue(player);
+  (createAudioPlayer as jest.Mock).mockImplementation((path?: string) => (path === WORD_AUDIO_PATH ? wordPlayer : player));
+  for (const p of [player, wordPlayer]) Object.values(p).forEach((fn) => fn.mockResolvedValue(undefined));
+  (speakText as jest.Mock).mockResolvedValue({ audioBase64: 'WORD' });
   player.playBase64.mockResolvedValue(undefined);
   player.replay.mockResolvedValue(undefined);
   player.cleanup.mockResolvedValue(undefined);
@@ -329,5 +332,148 @@ describe('practice (learning mode)', () => {
     });
 
     expect(hook.result.current.state.phase).toBe('playback');
+  });
+});
+
+describe('learning mode: play slowly and tap a word (week 6)', () => {
+  async function toPlayback() {
+    const hook = await setup();
+    await record(hook);
+    await act(async () => {
+      await hook.result.current.translate();
+    });
+    return hook;
+  }
+
+  test('playSlowly replays the translation at the slow rate without a network call', async () => {
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.playSlowly();
+    });
+
+    expect(player.replay).toHaveBeenCalledWith(SLOW_RATE);
+    expect(speakText).not.toHaveBeenCalled();
+    expect(translateText).toHaveBeenCalledTimes(1);
+  });
+
+  test('a normal replay asks for normal speed, so it is not left slow', async () => {
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.playSlowly();
+      await hook.result.current.replay();
+    });
+
+    expect(player.replay).toHaveBeenLastCalledWith(1);
+  });
+
+  test('playSlowly failure shows an alert', async () => {
+    player.replay.mockRejectedValue(new Error('No audio to replay'));
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.playSlowly();
+    });
+
+    expect(hook.result.current.state.alert?.title).toBe('Audio unavailable');
+  });
+
+  test('speakWord fetches the word in the target language, without its punctuation, and plays it on the word player', async () => {
+    const hook = await toPlayback();
+    player.playBase64.mockClear();
+
+    await act(async () => {
+      await hook.result.current.speakWord('estación?');
+    });
+
+    expect(speakText).toHaveBeenCalledWith('estación', 'es');
+    expect(player.stop).toHaveBeenCalled();
+    expect(wordPlayer.playBase64).toHaveBeenCalledWith('WORD');
+    expect(player.playBase64).not.toHaveBeenCalled();
+    expect(hook.result.current.state.speakingWord).toBeNull();
+  });
+
+  test('a second tap on the same word reuses the audio instead of calling the API again', async () => {
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.speakWord('estación?');
+    });
+    await act(async () => {
+      await hook.result.current.speakWord('Estación');
+    });
+
+    expect(speakText).toHaveBeenCalledTimes(1);
+    expect(wordPlayer.playBase64).toHaveBeenCalledTimes(2);
+  });
+
+  test('a new translation forgets the saved word audio', async () => {
+    const hook = await toPlayback();
+    await act(async () => {
+      await hook.result.current.speakWord('la');
+    });
+
+    await act(async () => {
+      hook.result.current.reset();
+    });
+    await record(hook);
+    await act(async () => {
+      await hook.result.current.translate();
+    });
+    await act(async () => {
+      await hook.result.current.speakWord('la');
+    });
+
+    expect(speakText).toHaveBeenCalledTimes(2);
+  });
+
+  test('shows the API message when the word cannot be loaded, and stops the loading state', async () => {
+    (speakText as jest.Mock).mockRejectedValue(ApiClientError.networkError());
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.speakWord('la');
+    });
+
+    expect(hook.result.current.state).toMatchObject({ speakingWord: null, alert: { title: 'Audio unavailable' } });
+    expect(wordPlayer.playBase64).not.toHaveBeenCalled();
+  });
+
+  test('does nothing for punctuation or before there is a translation', async () => {
+    const hook = await toPlayback();
+    await act(async () => {
+      await hook.result.current.speakWord('—');
+    });
+    const fresh = await setup();
+    await act(async () => {
+      await fresh.result.current.speakWord('hola');
+    });
+
+    expect(speakText).not.toHaveBeenCalled();
+  });
+
+  test('starting a practice attempt stops a word that is still playing', async () => {
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+
+    expect(wordPlayer.stop).toHaveBeenCalled();
+  });
+
+  test('a practice attempt is scored against the translation', async () => {
+    const hook = await toPlayback();
+
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+    clock += 1500;
+    await act(async () => {
+      await hook.result.current.finishRecording();
+    });
+
+    expect(hook.result.current.state.practiceScores).toEqual([100]);
   });
 });

@@ -19,6 +19,8 @@ const actions = {
   finishRecording: jest.fn(async () => {}),
   translate: jest.fn(async () => {}),
   replay: jest.fn(async () => {}),
+  playSlowly: jest.fn(async () => {}),
+  speakWord: jest.fn(async () => {}),
   reset: jest.fn(),
   setFromLang: jest.fn(),
   setToLang: jest.fn(),
@@ -324,12 +326,62 @@ describe('HomeScreen: practice (learning mode)', () => {
     expect(screen.getByTestId('home-loading')).toHaveTextContent('Listening…');
   });
 
+  test('after a translation, Play slowly replays it at the slower speed', async () => {
+    const user = userEvent.setup();
+    await renderWith(playback);
+
+    await user.press(screen.getByRole('button', { name: 'Play slowly' }));
+
+    expect(actions.playSlowly).toHaveBeenCalledTimes(1);
+    expect(actions.replay).not.toHaveBeenCalled();
+  });
+
+  test('the result shows the score and the attempts so far', async () => {
+    await renderWith({
+      ...playback,
+      phase: 'practiceResult',
+      practiceAttempt: 'Donde esta la nacion',
+      practiceScores: [50, 75],
+    });
+
+    expect(screen.getByTestId('practice-score')).toHaveTextContent('75');
+    expect(screen.getByRole('header', { name: 'Almost!' })).toBeTruthy();
+    expect(screen.getByTestId('practice-attempts')).toHaveTextContent('Attempts: 50 → 75');
+    expect(screen.getByRole('button', { name: 'estación?, not heard' })).toBeTruthy();
+  });
+
+  test('tapping a word in the result plays that word, and Play slowly plays the phrase', async () => {
+    const user = userEvent.setup();
+    await renderWith({ ...playback, phase: 'practiceResult', practiceAttempt: 'Donde esta la estacion', practiceScores: [100] });
+
+    await user.press(screen.getByRole('button', { name: 'estación?, heard' }));
+    await user.press(screen.getByRole('button', { name: 'Play slowly' }));
+
+    expect(actions.speakWord).toHaveBeenCalledWith('estación?');
+    expect(actions.playSlowly).toHaveBeenCalledTimes(1);
+  });
+
+  test('Chinese results are compared and shown character by character', async () => {
+    await renderWith({
+      ...playback,
+      toLang: lang('zh'),
+      translation: '你好世界',
+      phase: 'practiceResult',
+      practiceAttempt: '你好世间',
+      practiceScores: [75],
+    });
+
+    expect(screen.getByTestId('practice-score')).toHaveTextContent('75');
+    expect(screen.getByRole('button', { name: '界, not heard' })).toBeTruthy();
+    expect(screen.getByTestId('practice-expected')).toHaveStyle({ columnGap: 0 });
+  });
+
   test('the result shows expected vs heard, with Try again and Done', async () => {
     const user = userEvent.setup();
-    await renderWith({ ...playback, phase: 'practiceResult', practiceAttempt: 'Donde esta la estacion' });
+    await renderWith({ ...playback, phase: 'practiceResult', practiceAttempt: 'Donde esta la estacion', practiceScores: [100] });
 
-    expect(screen.getByTestId('practice-expected-text')).toHaveTextContent('¿Dónde está la estación?');
-    expect(screen.getByTestId('practice-heard-text')).toHaveTextContent('Donde esta la estacion');
+    expect(screen.getByTestId('practice-expected')).toHaveTextContent('¿Dóndeestálaestación?');
+    expect(screen.getByTestId('practice-heard')).toHaveTextContent('Dondeestalaestacion');
     expect(screen.queryByTestId('home-practice-button')).toBeNull();
 
     await user.press(screen.getByRole('button', { name: 'Try again' }));

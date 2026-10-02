@@ -56,14 +56,14 @@ Errors from the backend are always `ApiClientError` (`lib/apiError.ts`). `status
 - **RNTL 14 is async:** `await render(...)`, `await user.press(...)`, `await unmount()`. CI fails on un-awaited calls.
 - **Interactions:** use `userEvent.setup()`. Use `fireEvent` only for events userEvent doesn't model.
 - **Queries:** query the way a user finds things, with `getByRole(..., { name })`, `getByText` or `getByTestId`. No snapshot tests.
-- **testIDs:** kebab-case `<screen-or-component>-<element>[-<kind>]`. Existing ones: `record-button`, `language-picker-from`, `language-picker-to`, `language-modal`, `language-option-<code>`, `alert-modal-*`, `consent-agree-button`, `consent-decline-button`, and on the home screen `home-swap-button`, `home-transcript` (text: `home-transcript-text`), `home-detected-lang`, `home-translation` (`home-translation-text`), `home-loading`, `home-translate-button`, `home-play-button`, `home-rerecord-button`, `home-record-hint` and `home-practice-button`; typed input `input-mode-voice`, `input-mode-text`, `typed-input-field`, `typed-input-submit`, `typed-input-error` and `typed-input-count`; practice `practice-panel`, `practice-expected-text`, `practice-heard-text`, `practice-try-again-button` and `practice-done-button`.
+- **testIDs:** kebab-case `<screen-or-component>-<element>[-<kind>]`. Existing ones: `record-button`, `language-picker-from`, `language-picker-to`, `language-modal`, `language-option-<code>`, `alert-modal-*`, `consent-agree-button`, `consent-decline-button`, and on the home screen `home-swap-button`, `home-transcript` (text: `home-transcript-text`), `home-detected-lang`, `home-translation` (`home-translation-text`), `home-loading`, `home-translate-button`, `home-play-button`, `home-rerecord-button`, `home-record-hint`, `home-practice-button` and `home-play-slowly-button`; typed input `input-mode-voice`, `input-mode-text`, `typed-input-field`, `typed-input-submit`, `typed-input-error` and `typed-input-count`; practice `practice-panel`, `practice-score`, `practice-verdict`, `practice-attempts`, `practice-expected`, `practice-word-<index>`, `practice-heard`, `practice-play-slowly-button`, `practice-guide-note`, `practice-try-again-button` and `practice-done-button`.
 - **Accessibility:** every pressable sets `accessibilityRole`, `accessibilityLabel` and `accessibilityHint`, and titles use `accessibilityRole="header"`. Tests assert these.
 - **Test names:** describe the behavior and why it matters.
 - **Timeouts:** `jest.testTimeout` is 20s repo-wide because the first render test on a cold cache is slow. Don't add per-test timeouts.
 
 ## Status
 
-Baseline as of 2026-10-01 (after v2 Week 5): 24 suites, 210 tests, all passing. Lint and typecheck are clean.
+Baseline as of 2026-10-01 (after v2 Week 6): 26 suites, 276 tests, all passing. Lint and typecheck are clean.
 
 **Every audit check is now hard.** The week 4 refactor turned `app/index.tsx` (503 lines) into:
 

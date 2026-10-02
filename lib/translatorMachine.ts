@@ -1,4 +1,5 @@
 import { findLanguage, Language, SourceLanguage } from './languages';
+import { PracticeScore, scoreAttempt } from './practiceScore';
 
 /**
  * The home screen's state machine as a pure reducer (testability rule R4).
@@ -53,6 +54,10 @@ export type TranslatorState = {
   recordingFor: 'phrase' | 'practice';
   /** What the speech model heard when the student said the translation back. */
   practiceAttempt: string | null;
+  /** Score of every attempt at the current translation, oldest first. */
+  practiceScores: number[];
+  /** The word whose audio is being fetched ("tap a word to hear it"). */
+  speakingWord: string | null;
 };
 
 export type TranslatorAction =
@@ -75,6 +80,8 @@ export type TranslatorAction =
   | { type: 'practiceRequested' }
   | { type: 'practiceTranscribed'; transcript: string }
   | { type: 'practiceDone' }
+  | { type: 'wordRequested'; word: string }
+  | { type: 'wordFinished' }
   | { type: 'showAlert'; alert: AlertState }
   | { type: 'dismissAlert' }
   | { type: 'reset' };
@@ -96,6 +103,8 @@ export const initialTranslatorState: TranslatorState = {
   inputSource: null,
   recordingFor: 'phrase',
   practiceAttempt: null,
+  practiceScores: [],
+  speakingWord: null,
 };
 
 const cleared = {
@@ -107,6 +116,8 @@ const cleared = {
   inputSource: null,
   recordingFor: 'phrase' as const,
   practiceAttempt: null,
+  practiceScores: [],
+  speakingWord: null,
 };
 
 /**
@@ -170,7 +181,16 @@ export function translatorReducer(state: TranslatorState, action: TranslatorActi
         : state;
     case 'practiceTranscribed':
       return state.phase === 'transcribing' && state.recordingFor === 'practice'
-        ? { ...state, phase: 'practiceResult', recordingFor: 'phrase', practiceAttempt: action.transcript }
+        ? {
+            ...state,
+            phase: 'practiceResult',
+            recordingFor: 'phrase',
+            practiceAttempt: action.transcript,
+            practiceScores: [
+              ...state.practiceScores,
+              scoreAttempt(state.translation ?? '', action.transcript, state.toLang?.code).score,
+            ],
+          }
         : state;
     case 'transcribeFailed':
       return state.phase === 'transcribing'
@@ -181,6 +201,11 @@ export function translatorReducer(state: TranslatorState, action: TranslatorActi
         : state;
     case 'practiceDone':
       return state.phase === 'practiceResult' ? { ...state, phase: 'playback', practiceAttempt: null } : state;
+
+    case 'wordRequested':
+      return canPractice(state) && state.speakingWord === null ? { ...state, speakingWord: action.word } : state;
+    case 'wordFinished':
+      return { ...state, speakingWord: null };
 
     case 'setInputMode':
       return state.phase === 'idle' ? { ...state, inputMode: action.mode } : state;
@@ -232,6 +257,12 @@ export function canSwap(state: TranslatorState): boolean {
 /** Learning mode: say the translation back once it has been heard. */
 export function canPractice(state: TranslatorState): boolean {
   return (state.phase === 'playback' || state.phase === 'practiceResult') && state.translation !== null && state.toLang !== null;
+}
+
+/** The scored, highlighted comparison for the attempt on screen, or null outside practiceResult. */
+export function practiceResult(state: TranslatorState): PracticeScore | null {
+  if (state.phase !== 'practiceResult' || state.translation === null) return null;
+  return scoreAttempt(state.translation, state.practiceAttempt ?? '', state.toLang?.code);
 }
 
 /** Why typed text can't be submitted yet, or null when it can. */

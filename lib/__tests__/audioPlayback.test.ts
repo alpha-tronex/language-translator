@@ -1,6 +1,6 @@
 import * as ExpoAv from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-import { createAudioPlayer, TRANSLATION_AUDIO_PATH } from '../audioPlayback';
+import { createAudioPlayer, SLOW_RATE, TRANSLATION_AUDIO_PATH, WORD_AUDIO_PATH } from '../audioPlayback';
 
 const fs = FileSystem as typeof FileSystem & { __reset(): void; __files(): ReadonlyMap<string, unknown> };
 const av = ExpoAv as typeof ExpoAv & { __reset(): void };
@@ -30,6 +30,40 @@ describe('createAudioPlayer', () => {
     await player.replay();
 
     expect(sound.replayAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('replay at the slow rate plays at three-quarter speed with the pitch kept natural', async () => {
+    const player = createAudioPlayer();
+    await player.playBase64('AAAA');
+    const { sound } = await (ExpoAv.Audio.Sound.createAsync as jest.Mock).mock.results[0].value;
+
+    await player.replay(SLOW_RATE);
+
+    expect(sound.setRateAsync).toHaveBeenCalledWith(0.75, true);
+    expect(sound.replayAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('a normal replay after a slow one goes back to normal speed', async () => {
+    const player = createAudioPlayer();
+    await player.playBase64('AAAA');
+    const { sound } = await (ExpoAv.Audio.Sound.createAsync as jest.Mock).mock.results[0].value;
+
+    await player.replay(SLOW_RATE);
+    await player.replay();
+
+    expect(sound.setRateAsync).toHaveBeenLastCalledWith(1, true);
+  });
+
+  test('a word player uses its own file, so it never replaces the translation audio', async () => {
+    const translation = createAudioPlayer();
+    const word = createAudioPlayer(WORD_AUDIO_PATH);
+    await translation.playBase64('AAAA');
+
+    await word.playBase64('BBBB');
+    await word.cleanup();
+
+    expect(fs.__files().get(TRANSLATION_AUDIO_PATH)).toEqual({ contents: 'AAAA', encoding: 'base64' });
+    expect(fs.__files().has(WORD_AUDIO_PATH)).toBe(false);
   });
 
   test('stop pauses playback but keeps the audio for replay', async () => {

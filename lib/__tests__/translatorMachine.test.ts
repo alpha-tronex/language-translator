@@ -3,6 +3,7 @@ import {
   canPractice,
   canRecord,
   loadingLabel,
+  practiceResult,
   MAX_TYPED_CHARS,
   transcriptLabel,
   typedTextError,
@@ -289,5 +290,80 @@ describe('practice (learning mode)', () => {
   test('reset from a practice result starts over', () => {
     const result = run(practising, { type: 'transcribing' }, { type: 'practiceTranscribed', transcript: 'x' });
     expect(run(result, { type: 'reset' })).toMatchObject({ phase: 'idle', translation: null, practiceAttempt: null });
+  });
+});
+
+describe('practice scoring (week 6)', () => {
+  const attempt = (state: TranslatorState, transcript: string) =>
+    run(
+      state,
+      { type: 'practiceRequested' },
+      { type: 'recordingStarted', at: 5000 },
+      { type: 'transcribing' },
+      { type: 'practiceTranscribed', transcript }
+    );
+
+  test('scores each attempt against the translation and remembers the scores in order', () => {
+    const first = attempt(inPlayback, 'donde esta');
+    const second = attempt(first, 'donde esta la estacion');
+
+    expect(first.practiceScores).toEqual([50]);
+    expect(second.practiceScores).toEqual([50, 100]);
+  });
+
+  test('practiceResult gives the highlighted comparison for the attempt on screen', () => {
+    const result = practiceResult(attempt(inPlayback, 'donde esta'));
+
+    expect(result).toMatchObject({ score: 50, verdict: 'tryAgain' });
+    expect(result?.expected.map((t) => t.status)).toEqual(['matched', 'matched', 'missed', 'missed']);
+  });
+
+  test('practiceResult is null outside the practice result', () => {
+    expect(practiceResult(inPlayback)).toBeNull();
+    expect(practiceResult(ready)).toBeNull();
+  });
+
+  test('Done keeps the scores, so coming back to practice continues the same run', () => {
+    const done = run(attempt(inPlayback, 'donde esta'), { type: 'practiceDone' });
+
+    expect(done).toMatchObject({ phase: 'playback', practiceScores: [50] });
+  });
+
+  test('a new phrase or a language change starts the scores over', () => {
+    const practised = run(attempt(inPlayback, 'donde esta'), { type: 'practiceDone' });
+
+    expect(run(practised, { type: 'reset' }).practiceScores).toEqual([]);
+    expect(run(practised, { type: 'setToLang', lang: ar }).practiceScores).toEqual([]);
+  });
+
+  test('a failed attempt adds no score', () => {
+    const failed = run(
+      inPlayback,
+      { type: 'practiceRequested' },
+      { type: 'recordingStarted', at: 5000 },
+      { type: 'transcribing' },
+      { type: 'transcribeFailed', message: 'offline' }
+    );
+
+    expect(failed.practiceScores).toEqual([]);
+  });
+});
+
+describe('tap a word to hear it', () => {
+  test('marks the word as loading, then clears it', () => {
+    const loading = run(inPlayback, { type: 'wordRequested', word: 'estación?' });
+
+    expect(loading.speakingWord).toBe('estación?');
+    expect(run(loading, { type: 'wordFinished' }).speakingWord).toBeNull();
+  });
+
+  test('ignores a second tap while a word is still loading', () => {
+    const loading = run(inPlayback, { type: 'wordRequested', word: 'la' });
+
+    expect(run(loading, { type: 'wordRequested', word: 'estación' })).toBe(loading);
+  });
+
+  test('does nothing before there is a translation', () => {
+    expect(run(inReview, { type: 'wordRequested', word: 'x' })).toBe(inReview);
   });
 });

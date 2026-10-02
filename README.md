@@ -41,7 +41,8 @@ npm run ios     # starts Expo and opens the app in the iOS Simulator
 - [ ] Pick two languages, record a phrase, translate it, replay it.
 - [ ] Choose **Auto-detect**, speak another language, and check the "Detected" label.
 - [ ] Switch to **Type**: the text box stays visible above the keyboard; the keyboard closes with **done**, a tap outside, and **Continue**.
-- [ ] Translate, tap **Practice saying it**, say it back, and scroll the result; try **Try again** and **Done**.
+- [ ] Translate, tap **Play slowly** and check it is slower, then **Play** and check it is back to normal speed.
+- [ ] Tap **Practice saying it**, say it back, and check the score and the green/amber words; tap a word to hear it; try **Try again** (the attempts line appears) and **Done**.
 - [ ] Change a language while a result is showing: the "Change language?" prompt appears.
 - [ ] Turn Wi-Fi off on the Mac and try a translation: a clear "No internet" message appears, not a crash.
 

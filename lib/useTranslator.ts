@@ -1,9 +1,10 @@
 import type { Audio } from 'expo-av';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { transcribeAudio, transcribePracticeAttempt, translateText } from './api';
-import { createAudioPlayer } from './audioPlayback';
+import { speakText, transcribeAudio, transcribePracticeAttempt, translateText } from './api';
+import { createAudioPlayer, SLOW_RATE, WORD_AUDIO_PATH } from './audioPlayback';
 import { getErrorMessage } from './errors';
 import { Language, SourceLanguage } from './languages';
+import { wordForSpeech } from './practiceScore';
 import { hasMicPermission, requestMicPermission, startRecording, stopRecording } from './recorder';
 import {
   canPractice,
@@ -39,6 +40,10 @@ export const START_DELAYS_MS = [100];
 export function useTranslator({ now = Date.now, sleep = defaultSleep }: TranslatorDeps = {}) {
   const [state, dispatch] = useReducer(translatorReducer, initialTranslatorState);
   const [player] = useState(() => createAudioPlayer());
+  /** Separate player for single words, so the translation stays ready to replay. */
+  const [wordPlayer] = useState(() => createAudioPlayer(WORD_AUDIO_PATH));
+  /** Word audio already fetched for this translation: a second tap is free and instant. */
+  const wordAudio = useRef(new Map<string, string>());
   const recordingRef = useRef<Audio.Recording | null>(null);
   const stateRef = useRef<TranslatorState>(state);
   stateRef.current = state;
@@ -46,9 +51,10 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
   useEffect(
     () => () => {
       void player.cleanup();
+      void wordPlayer.cleanup();
       void recordingRef.current?.stopAndUnloadAsync().catch(() => {});
     },
-    [player]
+    [player, wordPlayer]
   );
 
   /** Mic → recording, shared by the phrase and practice attempts. */
@@ -86,8 +92,9 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
     dispatch({ type: 'practiceRequested' });
     // Stop playback so the mic doesn't pick it up, but keep the audio for replay.
     await player.stop();
+    await wordPlayer.stop();
     await startMicrophone();
-  }, [player, startMicrophone]);
+  }, [player, wordPlayer, startMicrophone]);
 
   const finishRecording = useCallback(async () => {
     const recording = recordingRef.current;
@@ -125,6 +132,8 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
     try {
       const result = await translateText(current.transcript, sourceLanguageCode(current), current.toLang.code);
       audioBase64 = result.audioBase64;
+      wordAudio.current.clear();
+      void wordPlayer.cleanup();
       dispatch({ type: 'translated', translation: result.translation });
     } catch (e) {
       dispatch({ type: 'translateFailed', message: getErrorMessage(e) });
@@ -139,18 +148,52 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
         alert: { title: 'Audio unavailable', message: "Couldn't play the audio. The translation text is shown above." },
       });
     }
-  }, [player]);
+  }, [player, wordPlayer]);
 
-  const replay = useCallback(async () => {
-    try {
-      await player.replay();
-    } catch {
-      dispatch({
-        type: 'showAlert',
-        alert: { title: 'Audio unavailable', message: "Couldn't play the audio. Try recording again." },
-      });
-    }
-  }, [player]);
+  const replayAt = useCallback(
+    async (rate: number) => {
+      try {
+        await wordPlayer.stop();
+        await player.replay(rate);
+      } catch {
+        dispatch({
+          type: 'showAlert',
+          alert: { title: 'Audio unavailable', message: "Couldn't play the audio. Try recording again." },
+        });
+      }
+    },
+    [player, wordPlayer]
+  );
+  const replay = useCallback(() => replayAt(1), [replayAt]);
+  /** Learning mode: the same audio at three-quarter speed (no network call). */
+  const playSlowly = useCallback(() => replayAt(SLOW_RATE), [replayAt]);
+
+  /** Learning mode: tap a word of the translation to hear just that word. */
+  const speakWord = useCallback(
+    async (token: string) => {
+      const current = stateRef.current;
+      const word = wordForSpeech(token);
+      const lang = current.toLang?.code;
+      if (!word || !lang || !canPractice(current) || current.speakingWord !== null) return;
+
+      dispatch({ type: 'wordRequested', word: token });
+      try {
+        const key = `${lang}:${word.toLowerCase()}`;
+        let audioBase64 = wordAudio.current.get(key);
+        if (!audioBase64) {
+          audioBase64 = (await speakText(word, lang)).audioBase64;
+          wordAudio.current.set(key, audioBase64);
+        }
+        await player.stop();
+        await wordPlayer.playBase64(audioBase64);
+      } catch (e) {
+        dispatch({ type: 'showAlert', alert: { title: 'Audio unavailable', message: getErrorMessage(e) } });
+      } finally {
+        dispatch({ type: 'wordFinished' });
+      }
+    },
+    [player, wordPlayer]
+  );
 
   const reset = useCallback(() => {
     void player.cleanup();
@@ -196,6 +239,8 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep }: Translat
     finishRecording,
     translate,
     replay,
+    playSlowly,
+    speakWord,
     reset,
     setFromLang,
     setToLang,

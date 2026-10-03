@@ -586,3 +586,83 @@ describe('practice list (week 7)', () => {
     expect(onPracticeScored).not.toHaveBeenCalled();
   });
 });
+
+describe('translation without audio (weeks 9–10: voice service down or slow)', () => {
+  async function toPlaybackWithoutAudio() {
+    (translateText as jest.Mock).mockResolvedValue({ translation: 'Na nga def?', audioBase64: null, audioUnavailable: true });
+    const hook = await setup(lang('en'), lang('wo'));
+    await record(hook);
+    await act(async () => {
+      await hook.result.current.translate();
+    });
+    return hook;
+  }
+
+  test('shows the translation, plays nothing and raises no error', async () => {
+    const hook = await toPlaybackWithoutAudio();
+
+    expect(hook.result.current.state).toMatchObject({ phase: 'playback', translation: 'Na nga def?', audioMissing: true, alert: null });
+    expect(player.playBase64).not.toHaveBeenCalled();
+  });
+
+  test('Play fetches the audio for the translation, plays it and clears the mark', async () => {
+    const hook = await toPlaybackWithoutAudio();
+
+    await act(async () => {
+      await hook.result.current.replay();
+    });
+
+    expect(speakPhrase).toHaveBeenCalledWith('Na nga def?', 'wo');
+    expect(player.playBase64).toHaveBeenCalledWith('PHRASE');
+    expect(player.replay).not.toHaveBeenCalled();
+    expect(hook.result.current.state.audioMissing).toBe(false);
+  });
+
+  test('the next Play replays what is now on the phone instead of fetching again', async () => {
+    const hook = await toPlaybackWithoutAudio();
+    await act(async () => {
+      await hook.result.current.replay();
+    });
+
+    await act(async () => {
+      await hook.result.current.replay();
+    });
+
+    expect(speakPhrase).toHaveBeenCalledTimes(1);
+    expect(player.replay).toHaveBeenCalledWith(1);
+  });
+
+  test('Play slowly fetches the audio, then plays it at the slow rate', async () => {
+    const hook = await toPlaybackWithoutAudio();
+
+    await act(async () => {
+      await hook.result.current.playSlowly();
+    });
+
+    expect(player.playBase64).toHaveBeenCalledWith('PHRASE');
+    expect(player.replay).toHaveBeenCalledWith(SLOW_RATE);
+  });
+
+  test('if the audio still cannot be fetched, says so and stays ready to try again', async () => {
+    (speakPhrase as jest.Mock).mockRejectedValue(new ApiClientError(503, 'Audio temporarily unavailable'));
+    const hook = await toPlaybackWithoutAudio();
+
+    await act(async () => {
+      await hook.result.current.replay();
+    });
+
+    expect(hook.result.current.state).toMatchObject({ audioMissing: true, alert: { title: 'Audio temporarily unavailable' } });
+    expect(player.playBase64).not.toHaveBeenCalled();
+  });
+
+  test('practice is not offered for a Wolof translation', async () => {
+    const hook = await toPlaybackWithoutAudio();
+
+    await act(async () => {
+      await hook.result.current.beginPractice();
+    });
+
+    expect(startRecording).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.state.phase).toBe('playback');
+  });
+});

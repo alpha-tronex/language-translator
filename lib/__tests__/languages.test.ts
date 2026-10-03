@@ -37,3 +37,18 @@ describe('AUTO_DETECT', () => {
     expect(SUPPORTED_LANGUAGES.map((l) => l.code)).not.toContain(AUTO_DETECT.code);
   });
 });
+
+describe('Wolof and Bambara', () => {
+  test('are in the list with native names', () => {
+    expect(findLanguage('wo')).toMatchObject({ label: 'Wolof', nativeLabel: 'Wolof' });
+    expect(findLanguage('bm')).toMatchObject({ label: 'Bambara', nativeLabel: 'Bamanankan' });
+  });
+
+  test('are the only text-only languages: they can be typed and played, not spoken or practiced', () => {
+    expect(SUPPORTED_LANGUAGES.filter((l) => l.textOnly).map((l) => l.code)).toEqual(['wo', 'bm']);
+  });
+
+  test('the codes match the API list (api/lib/languages.ts): change both together', () => {
+    expect(SUPPORTED_LANGUAGES.map((l) => l.code)).toEqual(['en', 'es', 'fr', 'de', 'zh', 'ar', 'ja', 'ko', 'wo', 'bm']);
+  });
+});

@@ -40,6 +40,7 @@ import {
   recordHint,
   transcriptIsRtl,
   transcriptLabel,
+  voiceUnavailableFor,
 } from '../lib/translatorMachine';
 import { useConsent } from '../lib/useConsent';
 
@@ -149,7 +150,7 @@ export default function HomeScreen() {
           )}
 
           {state.phase === 'idle' && (
-            <InputModeToggle mode={state.inputMode} onChange={translator.setInputMode} />
+            <InputModeToggle mode={state.inputMode} onChange={translator.setInputMode} voiceUnavailableFor={voiceUnavailableFor(state)} />
           )}
 
           {loading && (
@@ -182,12 +183,13 @@ export default function HomeScreen() {
             />
           )}
 
-          {state.phase === 'playback' && canPractice(state) && (
+          {state.phase === 'playback' && state.translation !== null && (
             <LearnActions
               saved={savedCurrent !== undefined}
+              audioMissing={state.audioMissing}
               onToggleSaved={toggleSaved}
               onPlaySlowly={() => void translator.playSlowly()}
-              onPractice={() => void translator.beginPractice()}
+              onPractice={canPractice(state) ? () => void translator.beginPractice() : undefined}
             />
           )}
 

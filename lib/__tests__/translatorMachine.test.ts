@@ -9,6 +9,7 @@ import {
   MAX_TYPED_CHARS,
   transcriptLabel,
   typedTextError,
+  voiceUnavailableFor,
   canSwap,
   detectedLanguageLabel,
   hasResults,
@@ -462,5 +463,83 @@ describe('currentPhrase', () => {
     );
 
     expect(currentPhrase(auto)).toMatchObject({ sourceLang: 'fr', targetLang: 'es' });
+  });
+});
+
+describe('Wolof and Bambara (text-only languages)', () => {
+  const wo = lang('wo');
+  const bm = lang('bm');
+  const toWolof = run(
+    { ...ready, toLang: wo },
+    { type: 'typedSubmitted', text: 'How are you?' },
+    { type: 'translateRequested' },
+    { type: 'translated', translation: 'Na nga def?' }
+  );
+
+  test('a Wolof translation plays like any other but cannot be practiced: the speech model cannot hear Wolof', () => {
+    expect(toWolof).toMatchObject({ phase: 'playback', translation: 'Na nga def?' });
+    expect(canPractice(toWolof)).toBe(false);
+    expect(run(toWolof, { type: 'practiceRequested' })).toBe(toWolof);
+  });
+
+  test('it can still be saved to the practice list', () => {
+    expect(currentPhrase(toWolof)).toMatchObject({ translation: 'Na nga def?', targetLang: 'wo' });
+  });
+
+  test('choosing Wolof or Bambara as the source switches input to typing', () => {
+    expect(run(ready, { type: 'setFromLang', lang: wo })).toMatchObject({ fromLang: wo, inputMode: 'text' });
+    expect(run(ready, { type: 'setFromLang', lang: bm }).inputMode).toBe('text');
+  });
+
+  test('Speak cannot be selected while the source is text-only', () => {
+    const fromWolof = run(ready, { type: 'setFromLang', lang: wo });
+
+    expect(run(fromWolof, { type: 'setInputMode', mode: 'voice' }).inputMode).toBe('text');
+    expect(voiceUnavailableFor(fromWolof)).toBe('Wolof');
+    expect(voiceUnavailableFor(ready)).toBeNull();
+  });
+
+  test('swapping so Wolof becomes the source also switches to typing', () => {
+    const swapped = run({ ...ready, toLang: wo }, { type: 'swapLanguages' });
+
+    expect(swapped).toMatchObject({ fromLang: wo, toLang: en, inputMode: 'text' });
+  });
+
+  test('going back to a spoken source keeps typing selected until the user picks Speak', () => {
+    const back = run(ready, { type: 'setFromLang', lang: wo }, { type: 'setFromLang', lang: en });
+
+    expect(back.inputMode).toBe('text');
+    expect(run(back, { type: 'setInputMode', mode: 'voice' }).inputMode).toBe('voice');
+  });
+});
+
+describe('translation without audio (voice service down)', () => {
+  const translating = run(inReview, { type: 'translateRequested' });
+
+  test('the translation is shown and marked as missing its audio', () => {
+    expect(run(translating, { type: 'translated', translation: 'Hola', audioMissing: true })).toMatchObject({
+      phase: 'playback',
+      translation: 'Hola',
+      audioMissing: true,
+    });
+  });
+
+  test('a normal translation is not marked', () => {
+    expect(inPlayback.audioMissing).toBe(false);
+  });
+
+  test('audioLoaded clears the mark once Play has fetched the audio', () => {
+    const missing = run(translating, { type: 'translated', translation: 'Hola', audioMissing: true });
+
+    expect(run(missing, { type: 'audioLoaded' }).audioMissing).toBe(false);
+    expect(run(inPlayback, { type: 'audioLoaded' })).toBe(inPlayback);
+  });
+
+  test('a saved phrase opened offline is marked too, and a new phrase clears the mark', () => {
+    const saved = { sourceText: 'Thank you', sourceLang: 'en', translation: 'Gracias', targetLang: 'es' };
+    const offline = run(ready, { type: 'savedRequested', phrase: saved }, { type: 'savedAudioFailed', message: 'x' });
+
+    expect(offline.audioMissing).toBe(true);
+    expect(run(offline, { type: 'reset' }).audioMissing).toBe(false);
   });
 });

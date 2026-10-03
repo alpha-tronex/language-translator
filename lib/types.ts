@@ -1,6 +1,8 @@
 export type TranslateResponse = {
   translation:  string;
-  audioBase64:  string;
+  /** Null when the voice service couldn't make audio; the translation is still good. */
+  audioBase64:  string | null;
+  audioUnavailable?: boolean;
   mimeType:     'audio/mpeg';
 };
 

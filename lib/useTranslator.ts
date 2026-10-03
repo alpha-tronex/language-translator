@@ -141,17 +141,19 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep, onPractice
     if (current.phase !== 'review' || !current.transcript || !current.toLang) return;
     dispatch({ type: 'translateRequested' });
 
-    let audioBase64: string;
+    let audioBase64: string | null;
     try {
       const result = await translateText(current.transcript, sourceLanguageCode(current), current.toLang.code);
       audioBase64 = result.audioBase64;
       wordAudio.current.clear();
       void wordPlayer.cleanup();
-      dispatch({ type: 'translated', translation: result.translation });
+      dispatch({ type: 'translated', translation: result.translation, audioMissing: audioBase64 === null });
     } catch (e) {
       dispatch({ type: 'translateFailed', message: getErrorMessage(e) });
       return;
     }
+    // The voice service was down or slow: the text is shown and Play will fetch the audio.
+    if (audioBase64 === null) return;
 
     try {
       await player.playBase64(audioBase64);
@@ -191,8 +193,22 @@ export function useTranslator({ now = Date.now, sleep = defaultSleep, onPractice
 
   const replayAt = useCallback(
     async (rate: number) => {
+      const current = stateRef.current;
       try {
         await wordPlayer.stop();
+        if (current.audioMissing && current.translation !== null && current.toLang) {
+          // No audio on the phone yet (voice service was down, or a saved phrase opened offline).
+          let audioBase64: string;
+          try {
+            audioBase64 = (await speakPhrase(current.translation, current.toLang.code)).audioBase64;
+          } catch (e) {
+            dispatch({ type: 'showAlert', alert: { title: 'Audio temporarily unavailable', message: getErrorMessage(e) } });
+            return;
+          }
+          await player.playBase64(audioBase64);
+          dispatch({ type: 'audioLoaded' });
+          if (rate === 1) return;
+        }
         await player.replay(rate);
       } catch {
         dispatch({

@@ -1,10 +1,16 @@
-export type LanguageCode = 'en' | 'es' | 'fr' | 'de' | 'zh' | 'ar' | 'ja' | 'ko';
+/** The same codes as the API's lib/languages.ts: change both together. */
+export type LanguageCode = 'en' | 'es' | 'fr' | 'de' | 'zh' | 'ar' | 'ja' | 'ko' | 'wo' | 'bm';
 
 export type Language = {
   code: LanguageCode;
   label: string;
   nativeLabel: string;
   rtl?: boolean;
+  /**
+   * The speech model can't transcribe this language, so it can be typed,
+   * translated and played, but not spoken into the app or practiced.
+   */
+  textOnly?: boolean;
 };
 
 export const SUPPORTED_LANGUAGES: Language[] = [
@@ -16,6 +22,8 @@ export const SUPPORTED_LANGUAGES: Language[] = [
   { code: 'ar', label: 'Arabic',   nativeLabel: 'العربية', rtl: true },
   { code: 'ja', label: 'Japanese', nativeLabel: '日本語'             },
   { code: 'ko', label: 'Korean',   nativeLabel: '한국어'             },
+  { code: 'wo', label: 'Wolof',    nativeLabel: 'Wolof',       textOnly: true },
+  { code: 'bm', label: 'Bambara',  nativeLabel: 'Bamanankan',  textOnly: true },
 ];
 
 /** "From" can also be auto-detect; "To" must be a real language. */

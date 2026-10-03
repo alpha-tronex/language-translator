@@ -35,3 +35,25 @@ describe('InputModeToggle', () => {
     expect(screen.getByTestId('input-mode-text')).toBeDisabled();
   });
 });
+
+describe('InputModeToggle with a text-only source language', () => {
+  test('disables Speak and explains why', async () => {
+    const user = userEvent.setup();
+    const onChange = jest.fn();
+    await render(<InputModeToggle mode="text" onChange={onChange} voiceUnavailableFor="Wolof" />);
+
+    expect(screen.getByTestId('input-mode-note')).toHaveTextContent("Wolof can't be spoken into the app yet, so type your phrase.");
+    expect(screen.getByTestId('input-mode-voice')).toBeDisabled();
+    expect(screen.getByTestId('input-mode-text')).toBeEnabled();
+    await user.press(screen.getByTestId('input-mode-voice'));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test('shows no note for a language that can be spoken', async () => {
+    await render(<InputModeToggle mode="voice" onChange={jest.fn()} voiceUnavailableFor={null} />);
+
+    expect(screen.queryByTestId('input-mode-note')).toBeNull();
+    expect(screen.getByTestId('input-mode-voice')).toBeEnabled();
+  });
+});

@@ -60,6 +60,8 @@ export type TranslatorState = {
   practiceScores: number[];
   /** The word whose audio is being fetched ("tap a word to hear it"). */
   speakingWord: string | null;
+  /** The translation is on screen but its audio isn't on the phone; Play fetches it. */
+  audioMissing: boolean;
 };
 
 export type TranslatorAction =
@@ -75,7 +77,8 @@ export type TranslatorAction =
   | { type: 'transcribed'; transcript: string; detectedLang?: string | null }
   | { type: 'transcribeFailed'; message: string }
   | { type: 'translateRequested' }
-  | { type: 'translated'; translation: string }
+  | { type: 'translated'; translation: string; audioMissing?: boolean }
+  | { type: 'audioLoaded' }
   | { type: 'translateFailed'; message: string }
   | { type: 'setInputMode'; mode: InputMode }
   | { type: 'typedSubmitted'; text: string }
@@ -109,6 +112,7 @@ export const initialTranslatorState: TranslatorState = {
   practiceAttempt: null,
   practiceScores: [],
   speakingWord: null,
+  audioMissing: false,
 };
 
 const cleared = {
@@ -122,6 +126,7 @@ const cleared = {
   practiceAttempt: null,
   practiceScores: [],
   speakingWord: null,
+  audioMissing: false,
 };
 
 /**
@@ -134,7 +139,16 @@ function abortRecording(state: TranslatorState, alert: AlertState): TranslatorSt
     : { ...state, ...cleared, alert };
 }
 
+/** A text-only source language (Wolof, Bambara) can't be recorded, so typing is the only input. */
+function withUsableInputMode(state: TranslatorState): TranslatorState {
+  return state.fromLang?.textOnly && state.inputMode === 'voice' ? { ...state, inputMode: 'text' } : state;
+}
+
 export function translatorReducer(state: TranslatorState, action: TranslatorAction): TranslatorState {
+  return withUsableInputMode(reduce(state, action));
+}
+
+function reduce(state: TranslatorState, action: TranslatorAction): TranslatorState {
   switch (action.type) {
     case 'setFromLang':
       return isBusy(state) ? state : { ...state, ...cleared, fromLang: action.lang };
@@ -223,7 +237,11 @@ export function translatorReducer(state: TranslatorState, action: TranslatorActi
     case 'translateRequested':
       return state.phase === 'review' && state.transcript && state.toLang ? { ...state, phase: 'translating' } : state;
     case 'translated':
-      return state.phase === 'translating' ? { ...state, phase: 'playback', translation: action.translation } : state;
+      return state.phase === 'translating'
+        ? { ...state, phase: 'playback', translation: action.translation, audioMissing: action.audioMissing === true }
+        : state;
+    case 'audioLoaded':
+      return state.audioMissing ? { ...state, audioMissing: false } : state;
     case 'translateFailed':
       return state.phase === 'translating'
         ? { ...state, phase: 'review', alert: { title: 'Translation failed', message: action.message } }
@@ -247,7 +265,7 @@ export function translatorReducer(state: TranslatorState, action: TranslatorActi
     // The text is already on screen, so a saved phrase can still be practiced without its audio.
     case 'savedAudioFailed':
       return state.phase === 'translating' && state.inputSource === 'saved'
-        ? { ...state, phase: 'playback', alert: { title: 'Audio unavailable', message: action.message } }
+        ? { ...state, phase: 'playback', audioMissing: true, alert: { title: 'Audio unavailable', message: action.message } }
         : state;
 
     case 'showAlert':
@@ -296,9 +314,19 @@ export function currentPhrase(state: TranslatorState): NewPhrase | null {
   };
 }
 
+/** The source language's name when it can't be spoken into the app (typing only), else null. */
+export function voiceUnavailableFor(state: TranslatorState): string | null {
+  return state.fromLang?.textOnly ? state.fromLang.label : null;
+}
+
 /** Learning mode: say the translation back once it has been heard. */
 export function canPractice(state: TranslatorState): boolean {
-  return (state.phase === 'playback' || state.phase === 'practiceResult') && state.translation !== null && state.toLang !== null;
+  return (
+    (state.phase === 'playback' || state.phase === 'practiceResult') &&
+    state.translation !== null &&
+    state.toLang !== null &&
+    !state.toLang.textOnly
+  );
 }
 
 /** The scored, highlighted comparison for the attempt on screen, or null outside practiceResult. */

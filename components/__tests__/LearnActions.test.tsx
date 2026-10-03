@@ -37,3 +37,21 @@ describe('LearnActions', () => {
     expect(star).toBeSelected();
   });
 });
+
+describe('LearnActions for a language that cannot be practiced', () => {
+  test('hides Practice but keeps the star and slow playback', async () => {
+    await render(<LearnActions saved={false} onToggleSaved={jest.fn()} onPlaySlowly={jest.fn()} />);
+
+    expect(screen.queryByTestId('home-practice-button')).toBeNull();
+    expect(screen.getByTestId('home-star-button')).toBeTruthy();
+    expect(screen.getByTestId('home-play-slowly-button')).toBeTruthy();
+  });
+
+  test('says when the audio is missing and that Play will try again', async () => {
+    const { rerender } = await render(<LearnActions saved={false} onToggleSaved={jest.fn()} onPlaySlowly={jest.fn()} audioMissing />);
+    expect(screen.getByTestId('home-audio-missing')).toHaveTextContent('Audio temporarily unavailable. Tap Play to try again.');
+
+    await rerender(<LearnActions saved={false} onToggleSaved={jest.fn()} onPlaySlowly={jest.fn()} />);
+    expect(screen.queryByTestId('home-audio-missing')).toBeNull();
+  });
+});

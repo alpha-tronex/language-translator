@@ -494,3 +494,48 @@ describe('HomeScreen: practice list (week 7)', () => {
     expect(screen.getByTestId('home-translation-text')).toHaveTextContent('¿Dónde está la estación?');
   });
 });
+
+describe('HomeScreen: Wolof and Bambara (weeks 9–10)', () => {
+  const wo = lang('wo');
+  const toWolof = { ...playback, toLang: wo, translation: 'Na nga def?' };
+
+  test('a Wolof translation can be played, slowed and starred, but not practiced', async () => {
+    const user = userEvent.setup();
+    await renderWith(toWolof);
+
+    expect(screen.getByTestId('home-translation-text')).toHaveTextContent('Na nga def?');
+    expect(screen.queryByTestId('home-practice-button')).toBeNull();
+    await user.press(screen.getByRole('button', { name: 'Play slowly' }));
+    await user.press(screen.getByRole('button', { name: 'Save to practice list' }));
+    await user.press(screen.getByRole('button', { name: 'Play translation' }));
+
+    expect(actions.playSlowly).toHaveBeenCalledTimes(1);
+    expect(toggleSaved).toHaveBeenCalledTimes(1);
+    expect(actions.replay).toHaveBeenCalledTimes(1);
+  });
+
+  test('when the voice service is down, says the audio is unavailable and that Play retries', async () => {
+    await renderWith({ ...toWolof, audioMissing: true });
+
+    expect(screen.getByTestId('home-audio-missing')).toHaveTextContent(/Audio temporarily unavailable/);
+  });
+
+  test('with Wolof as the source, Speak is off and a note says to type', async () => {
+    await renderWith({ fromLang: wo, toLang: en, inputMode: 'text' });
+
+    expect(screen.getByTestId('input-mode-note')).toHaveTextContent(/Wolof can't be spoken into the app yet/);
+    expect(screen.getByTestId('input-mode-voice')).toBeDisabled();
+    expect(screen.getByTestId('typed-input-field')).toBeTruthy();
+    expect(screen.queryByTestId('record-button')).toBeNull();
+  });
+
+  test('both languages are offered in the pickers', async () => {
+    const user = userEvent.setup();
+    await renderWith(ready);
+
+    await user.press(screen.getByTestId('language-picker-to'));
+
+    expect(screen.getByTestId('language-option-wo')).toBeTruthy();
+    expect(screen.getByTestId('language-option-bm')).toBeTruthy();
+  });
+});

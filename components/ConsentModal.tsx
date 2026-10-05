@@ -27,21 +27,26 @@ export default function ConsentModal({ visible, onAgree, onDecline }: Props) {
       <Pressable style={styles.overlay} onPress={() => {}}>
         <View style={styles.card}>
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={styles.title} accessibilityRole="header">Before you record</Text>
+            <Text style={styles.title} accessibilityRole="header">Before you start</Text>
             <Text style={styles.intro}>
-              To translate your speech, this app sends data to OpenAI. Please read the following before continuing.
+              To translate and speak your phrases, this app sends them to online services. Please read the following before continuing.
             </Text>
 
             <Text style={styles.sectionTitle}>What data is sent</Text>
             <Text style={styles.body}>
-              • Your audio recording is sent to OpenAI Whisper for speech-to-text transcription.{'\n'}
-              • The transcribed text is sent to OpenAI GPT-4o-mini for translation.{'\n'}
-              • The translated text is sent to OpenAI TTS to generate spoken audio.
+              • Your voice recording (a phrase to translate, or a practice attempt) is sent to OpenAI to be turned into text.{'\n'}
+              • The text you speak or type is sent to OpenAI for translation.{'\n'}
+              • The translation is sent to OpenAI to generate spoken audio. For Wolof and Bambara, it is sent to our own voice server instead.
             </Text>
 
             <Text style={styles.sectionTitle}>Who receives your data</Text>
             <Text style={styles.body}>
-              All data is processed by OpenAI (openai.com). Your audio and text are not stored by this app or its backend after the translation is returned.
+              OpenAI (openai.com) and, for Wolof and Bambara audio, a server we operate. Your recordings and text are not saved by this app&apos;s backend after the result is returned.
+            </Text>
+
+            <Text style={styles.sectionTitle}>What stays on your device</Text>
+            <Text style={styles.body}>
+              Your practice list, scores and streak are stored only on this device.
             </Text>
 
             <Text style={styles.sectionTitle}>Your privacy</Text>
@@ -51,7 +56,7 @@ export default function ConsentModal({ visible, onAgree, onDecline }: Props) {
             </Text>
 
             <Text style={styles.footer}>
-              By tapping Agree, you consent to your audio and text being sent to OpenAI for translation purposes.
+              By tapping Agree, you consent to your recordings and text being sent to these services for translation and speech.
             </Text>
           </ScrollView>
 
@@ -73,7 +78,7 @@ export default function ConsentModal({ visible, onAgree, onDecline }: Props) {
               testID="consent-agree-button"
               accessibilityRole="button"
               accessibilityLabel="Agree"
-              accessibilityHint="Agrees to send your audio to OpenAI and starts recording"
+              accessibilityHint="Agrees to send your recordings and text for translation, then continues"
               style={[styles.button, styles.buttonRight]}
               onPress={onAgree}
               activeOpacity={0.7}

@@ -31,4 +31,14 @@ describe('useConsent', () => {
     expect(result.current.consentGiven).toBe(true);
     await expect(AsyncStorage.getItem(CONSENT_KEY)).resolves.toBe('true');
   });
+
+  test('consent given to the old (v1) notice does not count: the new notice covers more data sharing', async () => {
+    await AsyncStorage.setItem('tlt_consent_v1', 'true');
+
+    const { result } = await renderHook(() => useConsent());
+    await act(async () => {});
+
+    expect(CONSENT_KEY).toBe('tlt_consent_v2');
+    expect(result.current.consentGiven).toBe(false);
+  });
 });

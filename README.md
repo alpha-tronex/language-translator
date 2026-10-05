@@ -43,6 +43,7 @@ npm run ios     # starts Expo and opens the app in the iOS Simulator
 - [ ] Switch to **Type**: the text box stays visible above the keyboard; the keyboard closes with **done**, a tap outside, and **Continue**.
 - [ ] Translate, tap **▶ Slowly** and check it is slower, then **Play** and check it is back to normal speed.
 - [ ] Tap **☆** to save the phrase, open **Practice list**, tap the phrase (it should come back with audio), then swipe a phrase left and **Delete** it.
+- [ ] On a fresh install (or after deleting the app from the Simulator), the **Before you start** notice appears before the first recording or typed phrase, and mentions Wolof and Bambara.
 - [ ] Translate English → **Wolof** and English → **Bambara**: both should play audio, **▶ Slowly** should work, and there should be no Practice button. Pick Wolof as **From**: Speak is greyed out and you can type.
 - [ ] Tap **Practice**, say it back, and check the score and the green/amber words; tap a word to hear it; try **Try again** (the attempts line appears) and **Done**.
 - [ ] Change a language while a result is showing: the "Change language?" prompt appears.

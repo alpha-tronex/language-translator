@@ -65,7 +65,7 @@ Errors from the backend are always `ApiClientError` (`lib/apiError.ts`). `status
 
 ## Status
 
-Baseline as of 2026-10-01 (after v2 Weeks 9–10): 33 suites, 407 tests, all passing. Lint and typecheck are clean.
+Baseline as of 2026-10-01 (after v2 Week 11): 33 suites, 411 tests, all passing. Lint and typecheck are clean.
 
 **Every audit check is now hard.** The week 4 refactor turned `app/index.tsx` (503 lines) into:
 

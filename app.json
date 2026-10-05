@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Thiam LLM Language Translator",
+    "name": "TransLearn by Alphatronex",
     "slug": "language-translator",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "orientation": "portrait",
     "scheme": "language-translator",
     "userInterfaceStyle": "dark",
@@ -16,6 +16,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.alphatronex.languagetranslator",
       "infoPlist": {
+        "CFBundleDisplayName": "TransLearn",
         "NSMicrophoneUsageDescription": "This app uses the microphone to record your voice so it can be translated into another language.",
         "ITSAppUsesNonExemptEncryption": false
       }

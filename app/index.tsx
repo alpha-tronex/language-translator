@@ -114,7 +114,7 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.title} accessibilityRole="header">
-            Thiam LLM Language Translator
+            TransLearn by Alphatronex
           </Text>
 
           <PracticeBar count={practice.data.phrases.length} streak={streak} onOpen={() => router.push('/practice')} />

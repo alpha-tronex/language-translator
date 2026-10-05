@@ -66,7 +66,7 @@ describe('HomeScreen: idle', () => {
     const user = userEvent.setup();
     await renderWith({});
 
-    expect(screen.getByRole('header', { name: 'Thiam LLM Language Translator' })).toBeTruthy();
+    expect(screen.getByRole('header', { name: 'TransLearn by Alphatronex' })).toBeTruthy();
     expect(screen.getByTestId('home-record-hint')).toHaveTextContent('Select languages above to get started');
     await user.press(screen.getByTestId('record-button'));
 
